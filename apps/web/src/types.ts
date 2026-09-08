@@ -1,0 +1,14 @@
+export type Project = { id: string; name: string; currency: string; as_of: string };
+export type Evidence = { source_id: string; sheet: string; row: number };
+export type Activity = { activity_id: string; name: string; planned_finish: string | null; actual_progress: number | null; evidence: Evidence };
+export type Snapshot = { id: string; version: number; as_of: string; currency: string; filename: string; sheet: string; source_id: string; rows: Activity[] };
+export type Insight = { id: string; severity: string; title: string; detail: string; action: string; evidence: Evidence[] };
+export type Metrics = { activity_count: number; progress: number | null; progress_basis: string; bac: number | null; ac: number | null; pv: number | null; ev: number | null; spi: number | null; cpi: number | null; overdue: number | null; overdue_coverage: string };
+export type Analysis = { metrics: Metrics; insights: Insight[]; limitations: string[]; evidence: Evidence[] };
+export type Overview = { project: Project; snapshot: Snapshot | null; analysis: Analysis | null };
+export type Suggestion = { column: string; field: string | null; confidence: number; reason: string };
+export type Source = { id: string; filename: string; sheet: string; headers: string[]; row_count: number; preview: Record<string,string>[]; suggestions: Suggestion[]; sha256: string };
+export type Issue = { row: number; field: string; code: string; message: string };
+export type Quality = { errors: Issue[]; warnings: Issue[]; row_count: number };
+export type Answer = { answer: string; mode: string; version: number; snapshot_id: string; evidence: Evidence[]; limitations: string[] };
+

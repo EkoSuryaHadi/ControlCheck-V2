@@ -1,0 +1,5 @@
+Activity ID,Name,Planned Start,Planned Finish,Actual Progress,Budget
+A1,Progress outside range,2026-09-10,2026-09-01,120,1000
+A1,Duplicate activity,,,50,-200
+,Missing ID,,,30,100
+
