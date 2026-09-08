@@ -34,14 +34,14 @@ Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Keep 
 ## First walkthrough
 
 1. Create a project, choose IDR and reporting date **2026-09-08** for the synthetic sample.
-2. Open Data Center and upload data/samples/project-snapshot.csv (or the corresponding XLSX).
-3. Review header suggestions, then click **Periksa kualitas**.
+2. Open Data Center, choose data/samples/project-snapshot.csv (or the corresponding XLSX), then click **Periksa struktur file**.
+3. Confirm the sheet, header row, date/decimal format and progress scale. Read the data, review mapping suggestions, then click **Periksa kualitas**.
 4. Publish the snapshot and inspect Overview and Insights.
 5. Ask **Bagaimana kondisi proyek saya?**, then **Aktivitas apa yang terlambat?**
 6. Open Reports and download the Markdown report.
 7. Upload quality-errors.csv to exercise blocking validation without replacing approved data.
 
-Use one complete leaf-activity snapshot per upload. A new publication replaces the active view rather than merging files. Do not combine WBS summaries and their child rows. CSV is UTF-8 with comma, semicolon or tab delimiter. XLSX defaults to its first sheet; supply another sheet name in Data Center. Formula cells must first be converted to values. Dates: YYYY-MM-DD. Progress: 0–100 points (0.5 means 0.5%). Currency: one project currency; no symbol/grouping separators in numeric cells. Limits: 5 MB, 10,000 rows, 100 columns.
+Use one complete leaf-activity snapshot per upload. A new publication replaces the active view rather than merging files. Do not combine WBS summaries and their child rows. CSV is UTF-8 with comma, semicolon or tab delimiter. Data Center previews the first rows, suggests a header row, lists XLSX sheets and requires explicit date (`YYYY-MM-DD`, `DD/MM/YYYY` or `MM/DD/YYYY`), decimal and progress-scale choices. Formula cells must first be converted to values. Currency: one project currency; no symbols or thousands separators in numeric cells. Limits: 5 MB, 10,000 rows, 100 columns.
 
 ## What works / what is a foundation
 

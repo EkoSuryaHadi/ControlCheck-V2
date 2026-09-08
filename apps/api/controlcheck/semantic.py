@@ -1,7 +1,7 @@
 """Canonical activity model v1 and explicit quality gates."""
 import math
 import re
-from datetime import date
+from datetime import datetime
 from typing import Protocol
 
 FIELDS = {
@@ -38,8 +38,25 @@ def suggest_mapping(headers):
     return suggestions
 
 
-def validate(raw_rows, mapping, source_id, sheet):
+def validate(raw_rows, mapping, source_id, sheet, options=None):
+    options = options or {'date_format':'iso', 'decimal_separator':'dot', 'percent_scale':'points'}
     errors, warnings, rows = [], [], []
+
+    def parse_date(value):
+        formats = {'iso':'%Y-%m-%d', 'dmy':'%d/%m/%Y', 'mdy':'%m/%d/%Y'}
+        return datetime.strptime(value, formats[options.get('date_format', 'iso')]).date().isoformat()
+
+    def parse_number(value, field):
+        if options.get('decimal_separator', 'dot') == 'comma':
+            if '.' in value:
+                raise ValueError()
+            value = value.replace(',', '.')
+        elif ',' in value:
+            raise ValueError()
+        result = float(value)
+        if field.endswith('progress') and options.get('percent_scale', 'points') == 'fraction':
+            result *= 100
+        return result
 
     def issue(collection, row, field, code, message):
         collection.append(dict(row=row, field=field, code=code, message=message))
@@ -54,7 +71,8 @@ def validate(raw_rows, mapping, source_id, sheet):
     if errors:
         return dict(rows=[], errors=errors, warnings=warnings)
     seen = set()
-    for number, raw in enumerate(raw_rows, 2):
+    for fallback_number, raw in enumerate(raw_rows, 2):
+        number = int(raw.get('__source_row__', fallback_number))
         item = {f: None for f in FIELDS}
         for column, field in mapping.items():
             if not field:
@@ -66,14 +84,12 @@ def validate(raw_rows, mapping, source_id, sheet):
                 item[field] = value
             elif field in ('planned_start', 'planned_finish'):
                 try:
-                    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
-                        raise ValueError()
-                    item[field] = date.fromisoformat(value).isoformat()
+                    item[field] = parse_date(value)
                 except ValueError:
                     issue(errors, number, field, 'invalid_date', 'Gunakan tanggal YYYY-MM-DD yang valid.')
             else:
                 try:
-                    val = float(value)
+                    val = parse_number(value, field)
                     if not math.isfinite(val) or val < 0 or (field == 'weight' and val <= 0):
                         raise ValueError()
                     if field.endswith('progress') and val > 100:
