@@ -1,0 +1,14 @@
+{
+  "name": "controlcheck-v2",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "npm run dev --workspace @controlcheck/web",
+    "build": "npm run build --workspace @controlcheck/web",
+    "typecheck": "npm run typecheck --workspace @controlcheck/web",
+    "test:api": "python -m pytest tests -q",
+    "api": "python -m uvicorn controlcheck.main:app --app-dir apps/api --host 127.0.0.1 --port 8000"
+  },
+  "engines": {"node": ">=22.12.0"}
+}

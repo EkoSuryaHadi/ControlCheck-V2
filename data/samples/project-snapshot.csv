@@ -1,0 +1,7 @@
+Activity ID,Name,Planned Start,Planned Finish,Planned Progress,Actual Progress,Budget,Actual Cost
+ENG-001,Engineering deliverables,2026-06-01,2026-08-15,100,100,150000000,145000000
+PRC-010,Long lead equipment,2026-07-01,2026-09-01,100,75,400000000,330000000
+CIV-020,Foundation works,2026-08-01,2026-09-05,100,60,200000000,165000000
+MEC-030,Mechanical installation,2026-09-01,2026-10-20,20,12,350000000,65000000
+ELE-040,Electrical installation,2026-09-05,2026-11-10,5,3,180000000,14000000
+COM-050,Commissioning,2026-11-01,2026-12-01,0,0,120000000,0
