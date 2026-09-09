@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make data intake a one-step workflow. A user uploads a CSV or XLSX file and ControlCheck AI reads, classifies, maps, validates, reconciles, and publishes it without requiring the user to configure sheets, headers, formats, mappings, or publication.
+Make data intake a one-step workflow. A user uploads a CSV, XLSX, or Microsoft Project MPP file and ControlCheck AI reads, classifies, maps, validates, reconciles, and publishes it without requiring the user to configure sheets, headers, formats, mappings, or publication.
 
 ## User flow
 
@@ -14,6 +14,14 @@ Make data intake a one-step workflow. A user uploads a CSV or XLSX file and Cont
 6. The interface displays a compact receipt: files used, agent decisions, row coverage, validation warnings, snapshot version, and direct links to Overview and Assistant.
 
 The existing detailed Data Center controls remain available as an advanced review path. They do not interrupt a successful automatic intake.
+
+## Microsoft Project MPP
+
+MPP is a direct Schedule source. The MPP reader extracts task identifiers, names, WBS hierarchy, planned and actual dates, durations, percent complete, dependencies, baselines, resources, and task costs when those fields are present in the file. Summary rows are retained for hierarchy context but are excluded from activity-level performance calculations unless explicitly supported by a later semantic-model rule.
+
+The reader uses a maintained project-file parser behind an adapter so the application is not coupled to one file-library API. It maps the extracted task table to the same Schedule semantic fields used by CSV/XLSX, retains MPP task UID and source evidence, and then runs the ordinary quality gate and automatic publication flow. Microsoft Project XML is supported as a fallback input when an MPP file cannot be read.
+
+MPP parsing failure never replaces the active snapshot. The receipt explains that the project file could not be read and offers the XML fallback or advanced review path.
 
 ## Decision policy
 
@@ -33,7 +41,7 @@ Warnings do not block automatic publication. They appear in the receipt so the u
 
 ## API and domain model
 
-`POST /api/projects/{pid}/ingestions` accepts one or more upload files. It returns an immutable ingestion receipt with status `published` or `needs_attention`.
+`POST /api/projects/{pid}/ingestions` accepts one or more CSV, XLSX, MPP, or Microsoft Project XML upload files. It returns an immutable ingestion receipt with status `published` or `needs_attention`.
 
 The receipt contains:
 
@@ -57,4 +65,4 @@ Domain tests cover classification, decision logging, schedule-only publication, 
 
 ## Future extension
 
-An optional model-backed interpreter may later propose mappings when deterministic aliases are insufficient. It must emit the same receipt structure and may only publish after the existing deterministic quality gate passes.
+An optional model-backed interpreter may later propose mappings when deterministic aliases are insufficient. It must emit the same receipt structure and may only publish after the existing deterministic quality gate passes. Primavera XER is the next project-schedule import after MPP/XML.
