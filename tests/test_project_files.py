@@ -8,3 +8,11 @@ def test_normalize_tasks_excludes_summary_rows_and_keeps_task_uid():
     ])
     assert [row['Task UID'] for row in result['rows']] == ['2']
     assert result['headers'][:2] == ['Activity ID', 'Name']
+
+
+def test_normalize_tasks_converts_project_datetimes_to_reporting_dates():
+    result = normalize_tasks([{'uid': 2, 'name': 'Foundation', 'summary': False,
+                               'planned_start': '2026-09-09T08:00',
+                               'planned_finish': '2026-09-10T17:00'}])
+    assert result['rows'][0]['Planned Start'] == '2026-09-09'
+    assert result['rows'][0]['Planned Finish'] == '2026-09-10'

@@ -14,6 +14,10 @@ def _value(value):
     return str(value).strip()
 
 
+def _date(value):
+    return _value(value).split('T', 1)[0]
+
+
 def normalize_tasks(tasks):
     rows = []
     for task in tasks:
@@ -23,8 +27,8 @@ def normalize_tasks(tasks):
         name = _value(task.get('name'))
         if not uid or not name:
             continue
-        rows.append({'Activity ID': uid, 'Name': name, 'Planned Start': _value(task.get('planned_start')),
-                     'Planned Finish': _value(task.get('planned_finish')),
+        rows.append({'Activity ID': uid, 'Name': name, 'Planned Start': _date(task.get('planned_start')),
+                     'Planned Finish': _date(task.get('planned_finish')),
                      'Actual Progress': _value(task.get('percent_complete')),
                      'Budget': _value(task.get('budget')), 'Actual Cost': _value(task.get('actual_cost')),
                      'Task UID': uid})
