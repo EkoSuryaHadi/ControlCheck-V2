@@ -110,3 +110,18 @@ def test_inspect_then_upload_with_header_and_normalization(client):
     source=uploaded.json(); mapping={s['column']:s['field'] for s in source['suggestions'] if s['field']}
     preview=client.post(f"/api/projects/{pid}/sources/{source['id']}/validate",json={'mapping':mapping})
     assert preview.status_code == 200 and preview.json()['errors'] == []
+
+
+def test_progress_source_uploads_with_dataset_type(client):
+    pid = project(client)
+    response = client.post(
+        f'/api/projects/{pid}/sources?dataset_type=progress',
+        files={'file': ('progress.csv', b'Activity ID,Actual Progress\nA1,55', 'text/csv')},
+    )
+    assert response.status_code == 201, response.text
+    source = response.json()
+    assert source['dataset_type'] == 'progress'
+    mapping = {item['column']: item['field'] for item in source['suggestions'] if item['field']}
+    validated = client.post(f"/api/projects/{pid}/sources/{source['id']}/validate", json={'mapping': mapping})
+    assert validated.status_code == 200
+    assert validated.json()['errors'] == []

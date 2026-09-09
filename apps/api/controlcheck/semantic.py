@@ -16,6 +16,13 @@ FIELDS = {
     'weight': ['weight', 'bobot'],
 }
 
+REQUIRED_FIELDS = {
+    'combined': {'activity_id', 'name'},
+    'schedule': {'activity_id', 'name'},
+    'progress': {'activity_id'},
+    'cost': {'activity_id'},
+}
+
 
 class MappingProvider(Protocol):
     def suggest(self, headers: list[str]) -> list[dict]: ...
@@ -38,9 +45,10 @@ def suggest_mapping(headers):
     return suggestions
 
 
-def validate(raw_rows, mapping, source_id, sheet, options=None):
+def validate(raw_rows, mapping, source_id, sheet, options=None, dataset_type='combined'):
     options = options or {'date_format':'iso', 'decimal_separator':'dot', 'percent_scale':'points'}
     errors, warnings, rows = [], [], []
+    required = REQUIRED_FIELDS.get(dataset_type)
 
     def parse_date(value):
         formats = {'iso':'%Y-%m-%d', 'dmy':'%d/%m/%Y', 'mdy':'%m/%d/%Y'}
@@ -61,13 +69,17 @@ def validate(raw_rows, mapping, source_id, sheet, options=None):
     def issue(collection, row, field, code, message):
         collection.append(dict(row=row, field=field, code=code, message=message))
 
+    if required is None:
+        issue(errors, 1, 'dataset_type', 'invalid_dataset_type', 'Jenis data tidak dikenal.')
+        return dict(rows=[], errors=errors, warnings=warnings)
     targets = [v for v in mapping.values() if v]
     if any(v not in FIELDS for v in targets) or len(targets) != len(set(targets)):
         issue(errors, 1, 'mapping', 'invalid_mapping', 'Field tujuan harus dikenal dan tidak berulang.')
     if raw_rows and any(k not in raw_rows[0] for k in mapping):
         issue(errors, 1, 'mapping', 'unknown_column', 'Kolom sumber tidak ditemukan.')
-    if not {'activity_id', 'name'} <= set(targets):
-        issue(errors, 1, 'mapping', 'required_mapping', 'Petakan activity_id dan name terlebih dahulu.')
+    if not required <= set(targets):
+        issue(errors, 1, 'mapping', 'required_mapping',
+              'Petakan ' + ' dan '.join(sorted(required)) + ' terlebih dahulu.')
     if errors:
         return dict(rows=[], errors=errors, warnings=warnings)
     seen = set()
@@ -97,7 +109,7 @@ def validate(raw_rows, mapping, source_id, sheet, options=None):
                     item[field] = val
                 except ValueError:
                     issue(errors, number, field, 'invalid_number', 'Angka tidak valid; progress 0–100, biaya ≥ 0, bobot > 0.')
-        for field in ('activity_id', 'name'):
+        for field in required:
             if not item[field]:
                 issue(errors, number, field, 'required', 'Nilai wajib belum diisi.')
         if item['activity_id'] in seen:

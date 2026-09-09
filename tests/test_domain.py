@@ -83,3 +83,11 @@ def test_explicit_locale_and_percent_conversions():
     assert row['planned_finish'] == '2026-12-31'
     assert row['actual_progress'] == 40
     assert row['budget'] == 1000.5
+
+
+def test_progress_requires_activity_id_but_not_name():
+    rows = [{'Activity ID': 'A-1', 'Actual Progress': '55', '__source_row__': 2}]
+    result = validate(rows, {'Activity ID': 'activity_id', 'Actual Progress': 'actual_progress'},
+                      'progress-1', 'Progress', dataset_type='progress')
+    assert result['errors'] == []
+    assert result['rows'][0]['name'] is None

@@ -116,12 +116,14 @@ def create_app(db_path=None):
     def upload_source(pid: str, file: UploadFile = File(...), sheet: str | None = None,
                       header_row: int = 1, date_format: Literal['iso','dmy','mdy'] = 'iso',
                       decimal_separator: Literal['dot','comma'] = 'dot',
-                      percent_scale: Literal['points','fraction'] = 'points'):
+                      percent_scale: Literal['points','fraction'] = 'points',
+                      dataset_type: Literal['combined','schedule','progress','cost'] = 'combined'):
         project(pid)
         try:
             content = file.file.read(MAX_BYTES + 1)
             table = read_source(file.filename or '', content, sheet, header_row, date_format,
                                 decimal_separator, percent_scale)
+            table['dataset_type'] = dataset_type
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         finally:
@@ -131,13 +133,13 @@ def create_app(db_path=None):
     @app.post('/api/projects/{pid}/sources/{sid}/validate')
     def validate_source(pid: str, sid: str, body: MappingInput):
         s = source(pid,sid)
-        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'))
+        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'),s.get('dataset_type', 'combined'))
         return dict(errors=checked['errors'], warnings=checked['warnings'], row_count=len(checked['rows']))
 
     @app.post('/api/projects/{pid}/sources/{sid}/publish')
     def publish_source(pid: str, sid: str, body: MappingInput):
         s = source(pid,sid)
-        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'))
+        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'),s.get('dataset_type', 'combined'))
         if checked['errors']:
             raise HTTPException(422, dict(message='Data belum lolos validasi.', errors=checked['errors']))
         return app.state.repo.publish(project(pid),s,body.mapping,checked['rows'])
