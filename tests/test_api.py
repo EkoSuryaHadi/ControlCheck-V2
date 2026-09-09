@@ -125,3 +125,35 @@ def test_progress_source_uploads_with_dataset_type(client):
     validated = client.post(f"/api/projects/{pid}/sources/{source['id']}/validate", json={'mapping': mapping})
     assert validated.status_code == 200
     assert validated.json()['errors'] == []
+
+
+def test_schedule_reconciliation_preview_accepts_schedule_only(client):
+    pid = project(client)
+    uploaded = client.post(
+        f'/api/projects/{pid}/sources?dataset_type=schedule',
+        files={'file': ('schedule.csv', b'Activity ID,Name\nA1,Foundation', 'text/csv')},
+    )
+    source = uploaded.json()
+    mapping = {item['column']: item['field'] for item in source['suggestions'] if item['field']}
+    preview = client.post(f'/api/projects/{pid}/reconciliations', json={
+        'schedule_source_id': source['id'], 'schedule_mapping': mapping,
+    })
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['coverage'] == {'schedule': 1, 'progress_matched': 0, 'cost_matched': 0}
+
+
+def test_schedule_reconciliation_publish_activates_schedule_only_snapshot(client):
+    pid = project(client)
+    uploaded = client.post(
+        f'/api/projects/{pid}/sources?dataset_type=schedule',
+        files={'file': ('schedule.csv', b'Activity ID,Name\nA1,Foundation', 'text/csv')},
+    )
+    source = uploaded.json()
+    mapping = {item['column']: item['field'] for item in source['suggestions'] if item['field']}
+    payload = {'schedule_source_id': source['id'], 'schedule_mapping': mapping}
+    published = client.post(f'/api/projects/{pid}/reconciliations/publish', json=payload)
+    assert published.status_code == 200, published.text
+    assert published.json()['source_ids'] == [source['id']]
+    assert published.json()['semantic_version'] == 'activity-snapshot/v2'
+    overview = client.get(f'/api/projects/{pid}/overview').json()
+    assert overview['snapshot']['id'] == published.json()['id']

@@ -16,4 +16,4 @@ Visual direction: calm, precise project-control workspace; warm neutral canvas, 
 Data Center displays the inspected matrix with the selected header highlighted, explicit normalization settings, suggestion confidence/rationale, a field mapping editor, source preview, row count, selected sheet, source ID and publication policy. Publication must never be enabled before a successful quality check of the current mapping. Changing mapping invalidates that check.
 
 ## Follow-up screens
-Dataset history/compare, multi-table reconciliation, mapping templates, quality resolution editor, source evidence drawer, conversation history, report templates, forecasting assumptions/results, agent action approvals and workspace membership. These are designed as roadmap boundaries, not represented as functional screens in this scaffold.
+Dataset history/compare, mapping templates, quality resolution editor, source evidence drawer, conversation history, report templates, forecasting assumptions/results, agent action approvals and workspace membership. These are designed as roadmap boundaries, not represented as functional screens in this scaffold.

@@ -91,3 +91,28 @@ class Repository:
                        (snapshot['id'],project['id'],source['id'],version,canonical_mapping,json.dumps(snapshot)))
             db.execute('UPDATE projects SET active_snapshot=? WHERE id=?',(snapshot['id'],project['id']))
             return snapshot
+
+    def publish_reconciliation(self, project, schedule_source, sources, mappings, rows):
+        """Persist an activity snapshot produced from Schedule plus optional inputs."""
+        canonical_mapping = json.dumps(mappings, sort_keys=True)
+        source_ids = [source['id'] for source in sources]
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            previous = db.execute('SELECT id,payload FROM snapshots WHERE project_id=? AND source_id=? AND mapping=?',
+                                  (project['id'], schedule_source['id'], canonical_mapping)).fetchone()
+            if previous:
+                db.execute('UPDATE projects SET active_snapshot=? WHERE id=?', (previous['id'], project['id']))
+                return json.loads(previous['payload'])
+            version = db.execute('SELECT COALESCE(MAX(version),0)+1 FROM snapshots WHERE project_id=?',
+                                 (project['id'],)).fetchone()[0]
+            snapshot = dict(
+                id=str(uuid4()), project_id=project['id'], source_id=schedule_source['id'],
+                source_ids=source_ids, version=version, semantic_version='activity-snapshot/v2',
+                as_of=project['as_of'], currency=project['currency'], filename=schedule_source['filename'],
+                sheet=schedule_source['sheet'], sha256=schedule_source['sha256'], rows=rows,
+            )
+            db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)',
+                       (snapshot['id'], project['id'], schedule_source['id'], version,
+                        canonical_mapping, json.dumps(snapshot)))
+            db.execute('UPDATE projects SET active_snapshot=? WHERE id=?', (snapshot['id'], project['id']))
+            return snapshot

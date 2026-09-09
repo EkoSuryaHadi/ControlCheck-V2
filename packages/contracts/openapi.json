@@ -205,6 +205,22 @@
               "default": "points",
               "title": "Percent Scale"
             }
+          },
+          {
+            "name": "dataset_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "combined",
+                "schedule",
+                "progress",
+                "cost"
+              ],
+              "type": "string",
+              "default": "combined",
+              "title": "Dataset Type"
+            }
           }
         ],
         "requestBody": {
@@ -372,6 +388,100 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/MappingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/reconciliations": {
+      "post": {
+        "summary": "Preview Reconciliation",
+        "operationId": "preview_reconciliation_api_projects__pid__reconciliations_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconciliationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/reconciliations/publish": {
+      "post": {
+        "summary": "Publish Reconciliation",
+        "operationId": "publish_reconciliation_api_projects__pid__reconciliations_publish_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReconciliationInput"
               }
             }
           }
@@ -629,6 +739,86 @@
           "question"
         ],
         "title": "Question"
+      },
+      "ReconciliationInput": {
+        "properties": {
+          "schedule_source_id": {
+            "type": "string",
+            "title": "Schedule Source Id"
+          },
+          "schedule_mapping": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Schedule Mapping"
+          },
+          "progress_source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Source Id"
+          },
+          "progress_mapping": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Progress Mapping",
+            "default": {}
+          },
+          "cost_source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Source Id"
+          },
+          "cost_mapping": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Cost Mapping",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_source_id",
+          "schedule_mapping"
+        ],
+        "title": "ReconciliationInput"
       },
       "ValidationError": {
         "properties": {

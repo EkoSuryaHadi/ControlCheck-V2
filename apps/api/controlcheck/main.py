@@ -12,6 +12,7 @@ from .importers import MAX_BYTES, inspect_source, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
 from .assistant import LocalAssistant, report
+from .reconciliation import reconcile
 
 
 class NewProject(BaseModel):
@@ -29,6 +30,15 @@ class NewProject(BaseModel):
 
 class MappingInput(BaseModel):
     mapping: dict[str, str | None]
+
+
+class ReconciliationInput(BaseModel):
+    schedule_source_id: str
+    schedule_mapping: dict[str, str | None]
+    progress_source_id: str | None = None
+    progress_mapping: dict[str, str | None] = {}
+    cost_source_id: str | None = None
+    cost_mapping: dict[str, str | None] = {}
 
 
 class Question(BaseModel):
@@ -143,6 +153,39 @@ def create_app(db_path=None):
         if checked['errors']:
             raise HTTPException(422, dict(message='Data belum lolos validasi.', errors=checked['errors']))
         return app.state.repo.publish(project(pid),s,body.mapping,checked['rows'])
+
+    def prepared_reconciliation(pid: str, body: ReconciliationInput):
+        def checked(source_id, mapping, expected_type):
+            if source_id is None:
+                return None
+            item = source(pid, source_id)
+            if item.get('dataset_type', 'combined') not in (expected_type, 'combined'):
+                raise HTTPException(422, f'Sumber harus bertipe {expected_type}.')
+            result = validate(item['rows'], mapping, source_id, item['sheet'],
+                              item.get('normalization'), item.get('dataset_type', 'combined'))
+            if result['errors']:
+                raise HTTPException(422, dict(message='Sumber belum lolos validasi.', errors=result['errors']))
+            return {**item, 'rows': result['rows']}
+        schedule = checked(body.schedule_source_id, body.schedule_mapping, 'schedule')
+        progress = checked(body.progress_source_id, body.progress_mapping, 'progress')
+        cost = checked(body.cost_source_id, body.cost_mapping, 'cost')
+        return schedule, progress, cost, reconcile(schedule, progress, cost)
+
+    @app.post('/api/projects/{pid}/reconciliations')
+    def preview_reconciliation(pid: str, body: ReconciliationInput):
+        _, _, _, result = prepared_reconciliation(pid, body)
+        return result
+
+    @app.post('/api/projects/{pid}/reconciliations/publish')
+    def publish_reconciliation(pid: str, body: ReconciliationInput):
+        schedule, progress, cost, result = prepared_reconciliation(pid, body)
+        if result['errors']:
+            raise HTTPException(422, dict(message='Data antar-sumber belum selaras.', errors=result['errors']))
+        mappings = dict(schedule=body.schedule_mapping, progress=body.progress_mapping if progress else None,
+                        cost=body.cost_mapping if cost else None)
+        return app.state.repo.publish_reconciliation(project(pid), schedule,
+                                                     [item for item in (schedule, progress, cost) if item],
+                                                     mappings, result['rows'])
 
     @app.get('/api/projects/{pid}/overview')
     def overview(pid: str):

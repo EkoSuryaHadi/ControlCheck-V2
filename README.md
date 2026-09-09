@@ -47,7 +47,7 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 - Working: project creation/selection, persisted uploads, editable mapping, quality gate, immutable normalized snapshot versions, deterministic schedule/progress/cost analytics, evidence-backed rule insights, read-only local analytical answers and Markdown export.
 - Interfaces prepared: model-based schema mapping, LLM assistant, MPP/XER importers, forecasting and agent action proposals.
-- Not connected: external AI provider, multi-table reconciliation, production authentication, tenant permissions, queued ingestion, historical comparisons, PDF export and autonomous actions.
+- Not connected: external AI provider, production authentication, tenant permissions, queued ingestion, historical comparisons, PDF export and autonomous actions.
 
 Local assistant is explicitly labelled **Analitik lokal**. It is not a live language model. No uploaded data leaves the local application through an AI provider. Read the production gates before deploying to shared infrastructure.
 
