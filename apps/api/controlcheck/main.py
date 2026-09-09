@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
@@ -13,6 +13,7 @@ from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
 from .assistant import LocalAssistant, report
 from .reconciliation import reconcile
+from .ingestion import run_ingestion
 
 
 class NewProject(BaseModel):
@@ -121,6 +122,21 @@ def create_app(db_path=None):
             raise HTTPException(422, str(exc)) from exc
         finally:
             file.file.close()
+
+    @app.post('/api/projects/{pid}/ingestions', status_code=201)
+    async def ingest_sources(pid: str, response: Response, files: list[UploadFile] = File(...)):
+        current_project = project(pid)
+        uploads = []
+        try:
+            for file in files:
+                uploads.append((file.filename or '', await file.read(MAX_BYTES + 1)))
+            result = run_ingestion(current_project, uploads, app.state.repo, mapper)
+            if result['status'] == 'needs_attention':
+                response.status_code = 200
+            return result
+        finally:
+            for file in files:
+                await file.close()
 
     @app.post('/api/projects/{pid}/sources', status_code=201)
     def upload_source(pid: str, file: UploadFile = File(...), sheet: str | None = None,

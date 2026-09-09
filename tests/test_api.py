@@ -157,3 +157,24 @@ def test_schedule_reconciliation_publish_activates_schedule_only_snapshot(client
     assert published.json()['semantic_version'] == 'activity-snapshot/v2'
     overview = client.get(f'/api/projects/{pid}/overview').json()
     assert overview['snapshot']['id'] == published.json()['id']
+
+
+def test_agent_upload_publishes_valid_schedule_without_mapping(client):
+    pid = project(client)
+    response = client.post(f'/api/projects/{pid}/ingestions', files=[
+        ('files', ('schedule.csv', b'Activity ID,Name\nA1,Foundation', 'text/csv')),
+    ])
+    assert response.status_code == 201, response.text
+    assert response.json()['status'] == 'published'
+    assert response.json()['snapshot']['rows'][0]['activity_id'] == 'A1'
+
+
+def test_agent_does_not_publish_unmatched_progress_activity(client):
+    pid = project(client)
+    response = client.post(f'/api/projects/{pid}/ingestions', files=[
+        ('files', ('schedule.csv', b'Activity ID,Name\nA1,Foundation', 'text/csv')),
+        ('files', ('progress.csv', b'Activity ID,Actual Progress\nB9,55', 'text/csv')),
+    ])
+    assert response.status_code == 200, response.text
+    assert response.json()['status'] == 'needs_attention'
+    assert client.get(f'/api/projects/{pid}/overview').json()['snapshot'] is None
