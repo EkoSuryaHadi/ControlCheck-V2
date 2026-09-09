@@ -2,7 +2,7 @@
 
 **AI Project Control Assistant / Project Intelligence Assistant**
 
-Upload project data → review mapping → validate → publish a semantic snapshot → ask → inspect insights → export a report.
+Upload project data → Ingestion Agent reads, maps, validates and publishes a semantic snapshot → ask → inspect insights → export a report.
 
 This is a new, independent development scaffold. It does not import, migrate or modify the old ControlCheck applications.
 
@@ -34,9 +34,9 @@ Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Keep 
 ## First walkthrough
 
 1. Create a project, choose IDR and reporting date **2026-09-08** for the synthetic sample.
-2. Open Data Center, choose data/samples/project-snapshot.csv (or the corresponding XLSX), then click **Periksa struktur file**.
-3. Confirm the sheet, header row, date/decimal format and progress scale. Read the data, review mapping suggestions, then click **Periksa kualitas**.
-4. Publish the snapshot and inspect Overview and Insights.
+2. Open Data Center, choose data/samples/project-snapshot.csv (or the corresponding XLSX), then click **Analisis project data**.
+3. Review the agent receipt and open Overview.
+4. Use **Advanced data review** only when the agent asks for attention or when you need manual control.
 5. Ask **Bagaimana kondisi proyek saya?**, then **Aktivitas apa yang terlambat?**
 6. Open Reports and download the Markdown report.
 7. Upload quality-errors.csv to exercise blocking validation without replacing approved data.
@@ -45,8 +45,8 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 ## What works / what is a foundation
 
-- Working: project creation/selection, persisted uploads, editable mapping, quality gate, immutable normalized snapshot versions, deterministic schedule/progress/cost analytics, evidence-backed rule insights, read-only local analytical answers and Markdown export.
-- Interfaces prepared: model-based schema mapping, LLM assistant, MPP/XER importers, forecasting and agent action proposals.
+- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions, deterministic schedule/progress/cost analytics, evidence-backed rule insights, read-only local analytical answers and Markdown export.
+- Interfaces prepared: model-based schema mapping, LLM assistant, XER importer, forecasting and agent action proposals.
 - Not connected: external AI provider, production authentication, tenant permissions, queued ingestion, historical comparisons, PDF export and autonomous actions.
 
 Local assistant is explicitly labelled **Analitik lokal**. It is not a live language model. No uploaded data leaves the local application through an AI provider. Read the production gates before deploying to shared infrastructure.

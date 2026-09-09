@@ -302,6 +302,53 @@
         }
       }
     },
+    "/api/projects/{pid}/ingestions": {
+      "post": {
+        "summary": "Ingest Sources",
+        "operationId": "ingest_sources_api_projects__pid__ingestions_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_sources_api_projects__pid__ingestions_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/sources/{sid}/validate": {
       "post": {
         "summary": "Validate Source",
@@ -634,6 +681,23 @@
   },
   "components": {
     "schemas": {
+      "Body_ingest_sources_api_projects__pid__ingestions_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_ingest_sources_api_projects__pid__ingestions_post"
+      },
       "Body_inspect_upload_api_projects__pid__sources_inspect_post": {
         "properties": {
           "file": {

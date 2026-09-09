@@ -6,8 +6,8 @@ Use a modular monorepo: React/TypeScript/Vite client and Python/FastAPI service.
 ```mermaid
 flowchart LR
   UI[Project workspace] --> API[FastAPI /api]
-  API --> Import[Importer registry: CSV / XLSX]
-  Import --> Mapping[Mapping provider + human confirmation]
+  API --> Import[Ingestion Agent: CSV / XLSX / MPP / XML]
+  Import --> Mapping[Deterministic mapping + decision receipt]
   Mapping --> Quality[Data quality engine]
   Quality --> Model[Versioned semantic snapshot]
   Model --> Analytics[Deterministic analytics]
@@ -21,7 +21,9 @@ flowchart LR
 | Path | Responsibility |
 |---|---|
 | apps/web/src | Workspace navigation, import review, insights, assistant and reports |
-| apps/api/controlcheck/importers.py | Bounded CSV/XLSX reading and source identity |
+| apps/api/controlcheck/importers.py | Bounded CSV/XLSX/MPP/XML reading and source identity |
+| apps/api/controlcheck/ingestion.py | Automatic classification, mapping, validation, reconciliation and receipt |
+| apps/api/controlcheck/project_files.py | Microsoft Project MPP/XML adapter and task normalization |
 | apps/api/controlcheck/semantic.py | Mapping suggestions, canonical fields and row validation |
 | apps/api/controlcheck/analytics.py | Pure snapshot measures and evidence-backed insight rules |
 | apps/api/controlcheck/assistant.py | Read-only analytical response and provider contract |
@@ -33,7 +35,7 @@ flowchart LR
 | infra | Local run boundaries and future infrastructure decisions |
 
 ## Lifecycle and persistence
-Inspection reads a bounded file without persisting it and returns sheet names, a header-row suggestion and an eight-row matrix preview. Import then creates an immutable source record containing project ID, file name, SHA-256, selected sheet, physical header row, normalization choices, headers and parsed rows. Raw bytes are not retained in this increment. Uploads are drafts until mapping confirmation and validation succeed. Preview returns errors and warnings without changing the published model. Publication is one transaction: store mapping, normalized rows, reporting date and incremented version, then set the project's active snapshot ID. Prior snapshots stay available in storage; history UI is a later increment. Reconfirming an identical mapping/source returns the existing snapshot rather than duplicating it.
+The Ingestion Agent reads bounded files, chooses the source structure, maps known fields, validates, reconciles Schedule with optional Progress/Cost, and returns an ordered decision receipt. Valid results publish automatically; ambiguity or blocking quality findings return `needs_attention` without changing the active snapshot. Each accepted source retains project ID, file name, SHA-256, selected sheet, physical header row, normalization choices, headers and parsed rows. Raw bytes are not retained in this increment. Publication stores mappings, normalized rows, reporting date and incremented version, then sets the project's active snapshot ID. Prior snapshots stay available in storage; history UI is a later increment.
 
 Every SQL lookup includes project scope. This prevents accidental mixing within the application, but is NOT user authorization: the local service has no login. Bind to 127.0.0.1. No deployment to a shared/public host before authentication, workspace membership and authorization tests exist. CORS is limited to the local Vite origin. A source ID from project B is not accessible through project A.
 

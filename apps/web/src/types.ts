@@ -15,3 +15,4 @@ export type Issue = { row: number; field: string; code: string; message: string 
 export type Quality = { errors: Issue[]; warnings: Issue[]; row_count: number };
 export type Answer = { answer: string; mode: string; version: number; snapshot_id: string; evidence: Evidence[]; limitations: string[] };
 export type Reconciliation = { rows: Activity[]; errors: { code: string; dataset: string; activity_id: string; message: string }[]; coverage: { schedule: number; progress_matched: number; cost_matched: number }; source_ids: string[] };
+export type IngestionReceipt = { status: 'published' | 'needs_attention'; summary: string; snapshot?: Snapshot; sources: { id: string; filename: string; dataset_type: DatasetType; sheet: string; row_count: number; mapping: Record<string, string> }[]; issues: { message: string; filename?: string }[]; decisions: { step: string; message: string; filename?: string }[]; coverage: Reconciliation['coverage'] };
