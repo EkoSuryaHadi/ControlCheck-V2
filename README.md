@@ -8,7 +8,7 @@ This is a new, independent development scaffold. It does not import, migrate or 
 
 ## Run locally (Windows)
 
-Prerequisites: Python 3.11+ and Node.js 22.12+.
+Prerequisites: Python 3.11+, Node.js 22.12+, and Java 17+ for direct MPP import. CSV/XLSX/Project XML do not require Java.
 
 ```powershell
 cd E:/project/ControlCheck-V2

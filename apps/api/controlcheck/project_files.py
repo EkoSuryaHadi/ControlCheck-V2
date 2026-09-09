@@ -54,7 +54,9 @@ def _mpp_tasks(content):
         import jpype
         import mpxj  # noqa: F401 -- configures MPXJ jars on the JVM classpath
         if not jpype.isJVMStarted():
-            jpype.startJVM(convertStrings=True)
+            java_home = os.getenv('CONTROLCHECK_JAVA_HOME')
+            jvm = os.path.join(java_home, 'bin', 'server', 'jvm.dll') if java_home else None
+            jpype.startJVM(jvm, convertStrings=True)
         from org.mpxj.reader import UniversalProjectReader
     except Exception as exc:
         raise ValueError('Parser MPP belum tersedia di server.') from exc
@@ -65,7 +67,7 @@ def _mpp_tasks(content):
             path = stream.name
         project = UniversalProjectReader().read(path)
         tasks = []
-        for task in project.getAllTasks():
+        for task in project.getTasks():
             tasks.append({'uid': task.getUniqueID(), 'name': task.getName(), 'summary': bool(task.getSummary()),
                           'planned_start': task.getBaselineStart() or task.getStart(),
                           'planned_finish': task.getBaselineFinish() or task.getFinish(),

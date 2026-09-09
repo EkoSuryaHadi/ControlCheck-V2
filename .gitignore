@@ -12,3 +12,4 @@ data/local/
 .DS_Store
 .worktrees/
 .playwright-cli/
+.tools/
