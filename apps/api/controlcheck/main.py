@@ -2,12 +2,13 @@ import os
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
+from typing import Literal
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 from .repository import Repository
-from .importers import MAX_BYTES, read_source
+from .importers import MAX_BYTES, inspect_source, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
 from .assistant import LocalAssistant, report
@@ -76,7 +77,8 @@ def create_app(db_path=None):
         return found
 
     def public_source(s):
-        return {k:v for k,v in s.items() if k != 'rows'} | dict(row_count=len(s['rows']), preview=s['rows'][:5], suggestions=mapper.suggest(s['headers']))
+        preview = [{k: v for k, v in row.items() if k != '__source_row__'} for row in s['rows'][:5]]
+        return {k:v for k,v in s.items() if k != 'rows'} | dict(row_count=len(s['rows']), preview=preview, suggestions=mapper.suggest(s['headers']))
 
     @app.get('/api/health')
     def health():
@@ -99,12 +101,27 @@ def create_app(db_path=None):
         project(pid)
         return [public_source(s) for s in app.state.repo.sources(pid)]
 
-    @app.post('/api/projects/{pid}/sources', status_code=201)
-    def upload_source(pid: str, file: UploadFile = File(...), sheet: str | None = None):
+    @app.post('/api/projects/{pid}/sources/inspect')
+    def inspect_upload(pid: str, file: UploadFile = File(...)):
         project(pid)
         try:
             content = file.file.read(MAX_BYTES + 1)
-            table = read_source(file.filename or '', content, sheet)
+            return inspect_source(file.filename or '', content)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        finally:
+            file.file.close()
+
+    @app.post('/api/projects/{pid}/sources', status_code=201)
+    def upload_source(pid: str, file: UploadFile = File(...), sheet: str | None = None,
+                      header_row: int = 1, date_format: Literal['iso','dmy','mdy'] = 'iso',
+                      decimal_separator: Literal['dot','comma'] = 'dot',
+                      percent_scale: Literal['points','fraction'] = 'points'):
+        project(pid)
+        try:
+            content = file.file.read(MAX_BYTES + 1)
+            table = read_source(file.filename or '', content, sheet, header_row, date_format,
+                                decimal_separator, percent_scale)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         finally:
@@ -114,13 +131,13 @@ def create_app(db_path=None):
     @app.post('/api/projects/{pid}/sources/{sid}/validate')
     def validate_source(pid: str, sid: str, body: MappingInput):
         s = source(pid,sid)
-        checked = validate(s['rows'],body.mapping,sid,s['sheet'])
+        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'))
         return dict(errors=checked['errors'], warnings=checked['warnings'], row_count=len(checked['rows']))
 
     @app.post('/api/projects/{pid}/sources/{sid}/publish')
     def publish_source(pid: str, sid: str, body: MappingInput):
         s = source(pid,sid)
-        checked = validate(s['rows'],body.mapping,sid,s['sheet'])
+        checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'))
         if checked['errors']:
             raise HTTPException(422, dict(message='Data belum lolos validasi.', errors=checked['errors']))
         return app.state.repo.publish(project(pid),s,body.mapping,checked['rows'])

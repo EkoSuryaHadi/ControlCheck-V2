@@ -152,6 +152,59 @@
               ],
               "title": "Sheet"
             }
+          },
+          {
+            "name": "header_row",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Header Row"
+            }
+          },
+          {
+            "name": "date_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "iso",
+                "dmy",
+                "mdy"
+              ],
+              "type": "string",
+              "default": "iso",
+              "title": "Date Format"
+            }
+          },
+          {
+            "name": "decimal_separator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "dot",
+                "comma"
+              ],
+              "type": "string",
+              "default": "dot",
+              "title": "Decimal Separator"
+            }
+          },
+          {
+            "name": "percent_scale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "points",
+                "fraction"
+              ],
+              "type": "string",
+              "default": "points",
+              "title": "Percent Scale"
+            }
           }
         ],
         "requestBody": {
@@ -166,6 +219,53 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/sources/inspect": {
+      "post": {
+        "summary": "Inspect Upload",
+        "operationId": "inspect_upload_api_projects__pid__sources_inspect_post",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_inspect_upload_api_projects__pid__sources_inspect_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -424,6 +524,20 @@
   },
   "components": {
     "schemas": {
+      "Body_inspect_upload_api_projects__pid__sources_inspect_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_inspect_upload_api_projects__pid__sources_inspect_post"
+      },
       "Body_upload_source_api_projects__pid__sources_post": {
         "properties": {
           "file": {

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, json } from './api';
-import type { Project, Overview, Source, Quality, Answer, Evidence, Insight } from './types';
+import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight } from './types';
 
 const tabs = ['Overview', 'Data Center', 'AI Assistant', 'Insights', 'Reports', 'Settings'] as const;
 type Tab = typeof tabs[number];
@@ -61,6 +61,11 @@ function Workspace({project}: {project: Project}) {
   const [quality,setQuality] = useState<Quality|null>(null);
   const [file,setFile] = useState<File|null>(null);
   const [sheet,setSheet] = useState('');
+  const [inspection,setInspection] = useState<SourceInspection|null>(null);
+  const [headerRow,setHeaderRow] = useState(1);
+  const [dateFormat,setDateFormat] = useState('iso');
+  const [decimalSeparator,setDecimalSeparator] = useState('dot');
+  const [percentScale,setPercentScale] = useState('points');
   const [busy,setBusy] = useState('');
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
@@ -79,11 +84,23 @@ function Workspace({project}: {project: Project}) {
     try { await action(); } catch(e) { setError(message(e)); } finally { setBusy(''); }
   }
   function selectSource(s: Source) { setSource(s); setMapping(Object.fromEntries(s.suggestions.map(m=>[m.column,m.field]))); setQuality(null); }
+  async function inspectFile() {
+    if (!file) return;
+    await run('Membaca struktur file…',async()=>{
+      const form=new FormData(); form.append('file',file);
+      const result=await api<SourceInspection>(base+'/sources/inspect',{method:'POST',body:form});
+      const first=result.sheets[0]; setInspection(result); setSheet(first?.name || '');
+      setHeaderRow(first?.suggested_header_row || 1); setNotice('Struktur file siap. Pilih sheet, baris header, dan format data.');
+    });
+  }
   async function upload(e: FormEvent) {
     e.preventDefault(); if (!file) return;
     await run('Mengunggah dan membaca data…',async()=>{
       const form=new FormData(); form.append('file',file);
-      const s=await api<Source>(base+'/sources'+(sheet ? '?sheet='+encodeURIComponent(sheet) : ''),{method:'POST',body:form});
+      const params=new URLSearchParams({header_row:String(headerRow),date_format:dateFormat,
+        decimal_separator:decimalSeparator,percent_scale:percentScale});
+      if (sheet && inspection?.kind === 'xlsx') params.set('sheet',sheet);
+      const s=await api<Source>(base+'/sources?'+params.toString(),{method:'POST',body:form});
       selectSource(s); await refresh(); setNotice('Sumber berhasil dibaca. Tinjau mapping sebelum publikasi.');
     });
   }
@@ -100,6 +117,7 @@ function Workspace({project}: {project: Project}) {
   }); }
   function downloadReport() { const url=URL.createObjectURL(new Blob([report],{type:'text/markdown;charset=utf-8'})); const link=document.createElement('a');link.href=url;link.download='controlcheck-report.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
   const snapshot=overview?.snapshot, analysis=overview?.analysis, metrics=analysis?.metrics;
+  const selectedSheet=inspection?.sheets.find(item=>item.name===sheet);
   const empty=<section className="empty-state"><span className="step-number">01 / DATA FIRST</span><h2>Intelligence dimulai<br/>dari data proyek Anda.</h2><p>Upload schedule, progress, dan biaya dalam satu snapshot Excel atau CSV. Setiap jawaban akan memiliki sumber yang bisa ditelusuri.</p><button onClick={()=>setTab('Data Center')}>Upload data pertama →</button><div className="journey"><span>Upload</span><b>→</b><span>Tinjau mapping</span><b>→</b><span>Validasi</span><b>→</b><span>Insight</span></div></section>;
   return <div className="workspace"><aside><p className="eyebrow">PROJECT WORKSPACE</p><nav aria-label="Navigasi proyek">{tabs.map((name,i)=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>{setTab(name);setError('');}}><span className="nav-number">0{i+1}</span>{name}{name==='Insights' && !!analysis?.insights.length && <em>{analysis.insights.length}</em>}</button>)}</nav><div className="sidebar-note"><span className="tag">ANALITIK LOKAL</span><p>Jawaban bersumber dari snapshot yang Anda setujui.</p><small>Integrasi model AI disiapkan untuk tahap berikutnya.</small></div></aside>
     <main><div className="page-heading"><div><p className="eyebrow">{project.name} / {project.currency}</p><h1>{tab === 'Overview' ? 'Your project, in focus.' : tab}</h1></div><div className="snapshot-label">Tanggal data <strong>{snapshot?.as_of || project.as_of}</strong>{snapshot ? <span>Snapshot v{snapshot.version}</span> : <span>Belum dipublikasikan</span>}</div></div>
@@ -113,8 +131,8 @@ function Workspace({project}: {project: Project}) {
         <section><div className="section-title"><h2>Activity register</h2><span>{snapshot.rows.length} aktivitas</span></div><div className="table-wrap"><table><thead><tr><th>ID</th><th>Aktivitas</th><th>Rencana selesai</th><th>Aktual</th><th>Sumber</th></tr></thead><tbody>{snapshot.rows.slice(0,100).map(r=><tr key={r.activity_id}><td>{r.activity_id}</td><td>{r.name}</td><td>{r.planned_finish || '—'}</td><td>{number(r.actual_progress)}{r.actual_progress != null ? '%' : ''}</td><td>{r.evidence.sheet}:{r.evidence.row}</td></tr>)}</tbody></table></div>{snapshot.rows.length>100 && <p className="hint">Menampilkan 100 dari {snapshot.rows.length} aktivitas. Perhitungan menggunakan seluruh snapshot.</p>}</section><details className="limitations"><summary>Cakupan dan keterbatasan analisis</summary>{analysis?.limitations.map(l=><p key={l}>{l}</p>)}<EvidenceList evidence={analysis?.evidence || []}/></details>
       </>)}
       {tab==='Data Center' && <>
-        <p className="lead">Bangun konteks proyek dari sumber yang Anda percaya.</p><form className="upload-area" onSubmit={upload}><div><span className="step-number">01 / UPLOAD SOURCE</span><h2>Excel atau CSV,<br/>siap untuk dipahami.</h2><p>Data tetap menjadi draft sampai mapping dan kualitas disetujui.</p></div><div className="upload-controls"><label>File data<input type="file" accept=".csv,.xlsx" required onChange={e=>setFile(e.target.files?.[0] || null)} disabled={!!busy}/></label><label>Nama sheet Excel <span className="muted">(opsional)</span><input placeholder="Kosongkan untuk sheet pertama" value={sheet} onChange={e=>setSheet(e.target.value)} disabled={!!busy}/></label><button disabled={!file || !!busy}>Baca data →</button><small>5 MB · 10.000 baris · CSV UTF-8 / XLSX</small></div></form>
-        <p className="hint">Satu baris = satu aktivitas. Tanggal YYYY-MM-DD, progress 0–100, biaya tanpa pemisah ribuan. Ubah formula Excel menjadi values. Publikasi mengganti snapshot aktif; file tidak digabung otomatis.</p>
+        <p className="lead">Bangun konteks proyek dari sumber yang Anda percaya.</p><form className="upload-area" onSubmit={upload}><div><span className="step-number">01 / INSPEKSI SOURCE</span><h2>Excel atau CSV,<br/>siap untuk dipahami.</h2><p>Periksa struktur file, lalu tentukan cara membaca tanggal, angka, dan persentase.</p>{selectedSheet && <div className="matrix-preview"><strong>Preview · {selectedSheet.name}</strong>{selectedSheet.preview.map((row,i)=><div key={i} className={i+1===headerRow?'chosen-header':''}><span>{i+1}</span><code>{row.map(value=>value || '—').join('  |  ')}</code></div>)}</div>}</div><div className="upload-controls"><label>File data<input type="file" accept=".csv,.xlsx" required onChange={e=>{setFile(e.target.files?.[0] || null);setInspection(null);setSource(null);setQuality(null);}} disabled={!!busy}/></label><button type="button" className="secondary" disabled={!file || !!busy} onClick={()=>void inspectFile()}>Periksa struktur file</button>{inspection && <><label>Sheet<select value={sheet} onChange={e=>{const value=e.target.value;setSheet(value);const next=inspection.sheets.find(item=>item.name===value);setHeaderRow(next?.suggested_header_row || 1);}} disabled={!!busy}>{inspection.sheets.map(item=><option key={item.name}>{item.name}</option>)}</select></label><label>Baris header<input type="number" min="1" max="50" value={headerRow} onChange={e=>setHeaderRow(Number(e.target.value))} disabled={!!busy}/></label><div className="form-row"><label>Format tanggal<select value={dateFormat} onChange={e=>setDateFormat(e.target.value)}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label><label>Desimal<select value={decimalSeparator} onChange={e=>setDecimalSeparator(e.target.value)}><option value="dot">Titik (1000.50)</option><option value="comma">Koma (1000,50)</option></select></label></div><label>Skala progress<select value={percentScale} onChange={e=>setPercentScale(e.target.value)}><option value="points">Persen 0–100</option><option value="fraction">Pecahan 0–1</option></select></label><button disabled={!!busy}>Baca data dengan aturan ini →</button></>}<small>5 MB · 10.000 baris · CSV UTF-8 / XLSX</small></div></form>
+        <p className="hint">Satu baris = satu aktivitas. Pilih format tanggal, desimal, dan skala progress yang sesuai dengan file. Biaya tidak boleh memakai simbol atau pemisah ribuan. Ubah formula Excel menjadi values. Publikasi mengganti snapshot aktif; file tidak digabung otomatis.</p>
         {sources.length>0 && <label className="source-picker">Sumber yang diunggah<select value={source?.id || ''} onChange={e=>{const s=sources.find(s=>s.id===e.target.value);if(s)selectSource(s);}} disabled={!!busy}><option value="" disabled>Pilih sumber untuk ditinjau</option>{sources.map(s=><option key={s.id} value={s.id}>{s.filename} · {s.sheet} · {s.row_count} baris · {s.id.slice(0,8)}</option>)}</select></label>}
         {source && <section><div className="section-title"><h2>02 / Tinjau schema mapping</h2><span className="tag">SARAN ALIAS LOKAL</span></div><p className="muted">{source.filename} · {source.sheet} · {source.row_count} baris</p><div className="table-wrap"><table><thead><tr><th>Kolom sumber</th><th>Field proyek</th><th>Saran awal</th></tr></thead><tbody>{source.suggestions.map(s=><tr key={s.column}><td>{s.column}</td><td><select aria-label={'Mapping '+s.column} disabled={!!busy} value={mapping[s.column] || ''} onChange={e=>{setMapping(old=>({...old,[s.column]:e.target.value || null}));setQuality(null);}}><option value="">Abaikan</option>{fieldNames.map(f=><option key={f} value={f}>{f}</option>)}</select></td><td><span>{Math.round(s.confidence*100)}% alias match</span><small className="block">{s.reason}</small></td></tr>)}</tbody></table></div>
         <details className="source-preview"><summary>Preview sumber · {Math.min(5,source.row_count)} baris pertama</summary><div className="table-wrap"><table><thead><tr>{source.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{source.preview.map((r,i)=><tr key={i}>{source.headers.map(h=><td key={h}>{r[h] || '—'}</td>)}</tr>)}</tbody></table></div><p className="hint">Source {source.id} · SHA-256 {source.sha256}</p></details>

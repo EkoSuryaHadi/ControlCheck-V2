@@ -10,4 +10,6 @@ __pycache__/
 data/local/
 *.log
 .DS_Store
+.worktrees/
+.playwright-cli/
 

@@ -96,3 +96,18 @@ def test_persistence_after_restart(tmp_path):
         assert client.get('/api/projects').json()[0]['id'] == pid
         assert len(client.get(f'/api/projects/{pid}/sources').json()) == 1
 
+
+def test_inspect_then_upload_with_header_and_normalization(client):
+    pid=project(client)
+    content=b'Report title;\nActivity ID;Name;Planned Finish;Actual Progress;Budget\nA1;Work;31/12/2026;0,4;1000,5'
+    inspected=client.post(f'/api/projects/{pid}/sources/inspect',files={'file':('report.csv',content)})
+    assert inspected.status_code == 200
+    assert inspected.json()['sheets'][0]['suggested_header_row'] == 2
+    route=(f'/api/projects/{pid}/sources?header_row=2&date_format=dmy'
+           '&decimal_separator=comma&percent_scale=fraction')
+    uploaded=client.post(route,files={'file':('report.csv',content)})
+    assert uploaded.status_code == 201, uploaded.text
+    source=uploaded.json(); mapping={s['column']:s['field'] for s in source['suggestions'] if s['field']}
+    preview=client.post(f"/api/projects/{pid}/sources/{source['id']}/validate",json={'mapping':mapping})
+    assert preview.status_code == 200 and preview.json()['errors'] == []
+
