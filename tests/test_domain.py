@@ -91,3 +91,30 @@ def test_progress_requires_activity_id_but_not_name():
                       'progress-1', 'Progress', dataset_type='progress')
     assert result['errors'] == []
     assert result['rows'][0]['name'] is None
+
+
+def test_validation_keeps_schedule_intelligence_metadata():
+    result = validate(
+        [{'Activity ID': 'A1', 'Name': 'Foundation', 'Is Critical': 'true', 'Is Milestone': 'false', 'Total Slack': '-1'}],
+        {'Activity ID': 'activity_id', 'Name': 'name', 'Is Critical': 'is_critical',
+         'Is Milestone': 'is_milestone', 'Total Slack': 'total_slack'}, 'source', 'Schedule', dataset_type='schedule')
+    assert result['errors'] == []
+    assert result['rows'][0]['is_critical'] is True
+    assert result['rows'][0]['total_slack'] == -1
+
+
+def test_schedule_intelligence_flags_critical_and_milestone_risks():
+    clean = validate(rows(), {k: k for k in rows()[0]}, 's', 'CSV')['rows']
+    clean[0].update(is_critical=True, is_milestone=True, total_slack=0)
+    result = analyze(clean, '2026-09-08')
+    assert result['metrics']['critical_count'] == 1
+    assert result['metrics']['critical_overdue'] == 1
+    assert result['metrics']['milestone_overdue'] == 1
+    assert {'critical_overdue', 'milestone_overdue', 'critical_exposure'} <= {item['id'] for item in result['insights']}
+
+
+def test_schedule_intelligence_makes_no_claim_without_source_metadata():
+    clean = validate(rows(), {k: k for k in rows()[0]}, 's', 'CSV')['rows']
+    result = analyze(clean, '2026-09-08')
+    assert result['metrics']['critical_count'] is None
+    assert not {'critical_overdue', 'milestone_overdue', 'critical_exposure'} & {item['id'] for item in result['insights']}

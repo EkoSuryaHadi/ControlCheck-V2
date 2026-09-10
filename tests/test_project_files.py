@@ -16,3 +16,12 @@ def test_normalize_tasks_converts_project_datetimes_to_reporting_dates():
                                'planned_finish': '2026-09-10T17:00'}])
     assert result['rows'][0]['Planned Start'] == '2026-09-09'
     assert result['rows'][0]['Planned Finish'] == '2026-09-10'
+
+
+def test_normalize_tasks_preserves_schedule_intelligence_metadata():
+    result = normalize_tasks([{'uid': 2, 'name': 'Foundation', 'summary': False,
+                               'critical': True, 'milestone': True, 'total_slack': 0}])
+    row = result['rows'][0]
+    assert row['Is Critical'] == 'true'
+    assert row['Is Milestone'] == 'true'
+    assert row['Total Slack'] == '0'

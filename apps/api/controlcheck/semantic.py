@@ -14,6 +14,9 @@ FIELDS = {
     'budget': ['budget', 'bac', 'anggaran'],
     'actual_cost': ['actual cost', 'ac', 'biaya aktual'],
     'weight': ['weight', 'bobot'],
+    'is_critical': ['is critical', 'critical'],
+    'is_milestone': ['is milestone', 'milestone'],
+    'total_slack': ['total slack', 'slack'],
 }
 
 REQUIRED_FIELDS = {
@@ -99,10 +102,15 @@ def validate(raw_rows, mapping, source_id, sheet, options=None, dataset_type='co
                     item[field] = parse_date(value)
                 except ValueError:
                     issue(errors, number, field, 'invalid_date', 'Gunakan tanggal YYYY-MM-DD yang valid.')
+            elif field in ('is_critical', 'is_milestone'):
+                if value.lower() not in ('true', 'false', '1', '0'):
+                    issue(errors, number, field, 'invalid_boolean', 'Nilai harus true/false.')
+                else:
+                    item[field] = value.lower() in ('true', '1')
             else:
                 try:
                     val = parse_number(value, field)
-                    if not math.isfinite(val) or val < 0 or (field == 'weight' and val <= 0):
+                    if not math.isfinite(val) or (field not in ('total_slack',) and val < 0) or (field == 'weight' and val <= 0):
                         raise ValueError()
                     if field.endswith('progress') and val > 100:
                         raise ValueError()

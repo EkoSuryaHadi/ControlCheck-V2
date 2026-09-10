@@ -30,21 +30,53 @@ def analyze(rows, as_of):
                 if weights and sum(weights) > 0 and all(r.get('actual_progress') is not None for r in rows) else None)
     covered = [r for r in rows if r.get('planned_finish') and r.get('actual_progress') is not None]
     overdue = [r for r in covered if r['planned_finish'] < as_of and r['actual_progress'] < 100]
+    critical_known = [r for r in rows if r.get('is_critical') is not None]
+    milestone_known = [r for r in rows if r.get('is_milestone') is not None]
+    slack_known = [r for r in rows if r.get('total_slack') is not None]
+    critical = [r for r in critical_known if r['is_critical']]
+    critical_overdue = [r for r in overdue if r.get('is_critical')]
+    milestone_overdue = [r for r in overdue if r.get('is_milestone')]
+    critical_exposure = [r for r in critical if r.get('total_slack') is not None and r['total_slack'] <= 0]
     metrics = dict(activity_count=n, progress=progress, progress_basis=basis, bac=bac, ac=ac, pv=pv, ev=ev,
                    spi=spi, cpi=cpi, sv=ev-pv if ev is not None and pv is not None else None,
                    cv=ev-ac if ev is not None and ac is not None else None,
-                   overdue=len(overdue) if covered else None, overdue_coverage=f'{len(covered)}/{n}')
+                   overdue=len(overdue) if covered else None, overdue_coverage=f'{len(covered)}/{n}',
+                   critical_count=len(critical) if critical_known else None,
+                   critical_overdue=len(critical_overdue) if critical_known else None,
+                   milestone_overdue=len(milestone_overdue) if milestone_known else None,
+                   critical_coverage=f'{len(critical_known)}/{n}', milestone_coverage=f'{len(milestone_known)}/{n}',
+                   slack_coverage=f'{len(slack_known)}/{n}')
     if any(metrics[k] is None for k in ('bac','ac','pv','ev','progress','spi','cpi')):
         limitations.append('Sebagian metrik tidak tersedia karena data tidak lengkap atau penyebut nol.')
     if len(covered) != n:
         limitations.append('Cakupan keterlambatan belum lengkap; tidak semua aktivitas dapat dinilai.')
-    limitations.append('Satu snapshot tidak menunjukkan tren, critical path, penyebab perubahan, atau forecast selesai.')
+    if not critical_known:
+        limitations.append('Status critical tidak tersedia dari sumber schedule; critical path tidak dapat dinilai.')
+    limitations.append('Satu snapshot tidak menunjukkan tren, penyebab perubahan, atau forecast selesai.')
     evidence = [r['evidence'] for r in rows]
     insights = []
     if overdue:
         insights.append(dict(id='overdue', severity='high', title=f'{len(overdue)} aktivitas melewati rencana selesai',
                              detail=f'Belum mencapai 100% pada {as_of}. Cakupan penilaian: {len(covered)}/{n}.',
                              action='Tinjau status aktual dan rencana pemulihan bersama planner.', evidence=[r['evidence'] for r in overdue]))
+    if critical_overdue:
+        insights.append(dict(id='critical_overdue', severity='high',
+                             title=f'{len(critical_overdue)} aktivitas critical melewati rencana selesai',
+                             detail='Status critical berasal dari file schedule; aktivitas belum mencapai 100%.',
+                             action='Prioritaskan pemulihan bersama planner dan tinjau predecessor aktivitas.',
+                             evidence=[r['evidence'] for r in critical_overdue]))
+    if milestone_overdue:
+        insights.append(dict(id='milestone_overdue', severity='high',
+                             title=f'{len(milestone_overdue)} milestone melewati rencana selesai',
+                             detail='Milestone belum mencapai 100% pada status date snapshot.',
+                             action='Konfirmasi dampak milestone dan tindakan pemulihan dengan tim proyek.',
+                             evidence=[r['evidence'] for r in milestone_overdue]))
+    if critical_exposure:
+        insights.append(dict(id='critical_exposure', severity='medium',
+                             title=f'{len(critical_exposure)} aktivitas critical tanpa float positif',
+                             detail='Total slack nol atau negatif berdasarkan file schedule.',
+                             action='Pantau aktivitas ini pada pembaruan schedule berikutnya.',
+                             evidence=[r['evidence'] for r in critical_exposure]))
     if spi is not None and spi < 1:
         insights.append(dict(id='spi', severity='medium', title=f'SPI {spi:.2f}: earned value di bawah rencana',
                              detail='EV / PV < 1. Ini bukan estimasi jumlah hari keterlambatan.',
