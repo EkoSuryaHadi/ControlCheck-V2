@@ -45,9 +45,9 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 ## What works / what is a foundation
 
-- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
-- Interfaces prepared: XER importer, forecasting and agent action proposals.
-- Not connected: production authentication, tenant permissions, queued ingestion, PDF export and autonomous actions.
+- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic Forecast Readiness gate, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
+- Interfaces prepared: XER importer, forecast method/range calculation and agent action proposals.
+- Not connected: forecast date/probability calculation, production authentication, tenant permissions, queued ingestion, PDF export and autonomous actions.
 
 Without a configured key, the assistant is explicitly labelled **Analitik lokal**. With `SUMOPOD_API_KEY`, the selected SumoPod model receives bounded approved snapshot context and must return validated row citations. Read the production gates before deploying to shared infrastructure.
 

@@ -26,6 +26,7 @@ flowchart LR
 | apps/api/controlcheck/project_files.py | Microsoft Project MPP/XML adapter and task normalization |
 | apps/api/controlcheck/semantic.py | Mapping suggestions, canonical fields and row validation |
 | apps/api/controlcheck/analytics.py | Pure snapshot measures and evidence-backed insight rules |
+| apps/api/controlcheck/forecast_readiness.py | Pure evidence sufficiency gate for a future forecast method |
 | apps/api/controlcheck/assistant.py | Read-only analytical response and provider contract |
 | apps/api/controlcheck/repository.py | SQLite transactions and project-scoped persistence |
 | apps/api/controlcheck/main.py | HTTP orchestration and publication guard |
@@ -46,7 +47,7 @@ All rows must contain the inputs for an aggregate; otherwise return null and a l
 - BAC = sum(budget); PV = sum(budget × planned_progress / 100); EV = sum(budget × actual_progress / 100); AC = sum(actual_cost).
 - SPI = EV / PV when PV > 0; CPI = EV / AC when AC > 0. SV = EV − PV; CV = EV − AC. Monetary variance is NOT duration variance.
 - Overdue: planned_finish < snapshot reporting date and actual_progress < 100. Missing facts suppress classification for that row; coverage is returned. No critical-path inference.
-- No trend, forecast or root cause without the additional evidence needed for it. A single snapshot does not prove why SPI changed.
+- No trend, completion forecast or root cause without the additional evidence needed for it. Forecast Readiness only checks history, date/progress coverage and dependency integrity; it returns no outcome. A single snapshot does not prove why SPI changed.
 
 ## AI boundaries
 MappingProvider and AssistantProvider are protocols. The local provider is always available; an optional SumoPod adapter is enabled only when `SUMOPOD_API_KEY` is set. Future LLM adapters receive a bounded typed tool context, not database credentials. Schema suggestions must pass allow-list and uniqueness checks and human confirmation. Answers must cite source IDs/rows and show snapshot version. Provider failures must not publish data or invent facts. Do not use a vector store as the calculator or as the canonical numeric model.

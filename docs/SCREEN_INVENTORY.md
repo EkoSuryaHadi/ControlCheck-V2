@@ -5,7 +5,7 @@ Visual direction: calm, precise project-control workspace; warm neutral canvas, 
 | Screen | Primary job | Interaction | Empty/loading/error states |
 |---|---|---|---|
 | Project selector / creation | Establish data boundary | Create project with name, currency, reporting date; switch current project | First-project guidance; validation message; disable duplicate submissions |
-| Overview | Understand the published snapshot and period movement | Metrics, coverage, active-vs-previous snapshot deltas, activity register, go to upload/assistant | No fabricated demo metrics; upload CTA; API unavailable message |
+| Overview | Understand the published snapshot, period movement, and forecast-data sufficiency | Metrics, coverage, active-vs-previous snapshot deltas, Forecast Readiness gate, activity register, go to upload/assistant | No fabricated demo metrics; readiness lists missing evidence rather than predicting an outcome |
 | Data Center | Convert project files into approved data | Upload CSV/XLSX/MPP/XML; agent maps, validates and publishes; advanced review is optional | Agent progress, decision receipt, parse failures, blocking quality findings and review action |
 | AI Assistant | Ask about validated project evidence | Suggested prompts, question form, answer, citations and prior-period context | Local or grounded mode is explicit; validated citations remain mandatory |
 | Insights | Prioritize evidence-backed issues | Severity, rationale, source rows and response suggestions | No published data; no triggered rule is not a claim that project is risk-free |
