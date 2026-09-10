@@ -96,12 +96,12 @@ def inspect_source(filename: str, content: bytes) -> dict:
         names, matrices = ['CSV'], {'CSV': _csv_matrix(content)}
     elif extension == '.xlsx':
         names, matrices = _xlsx_matrix(content, None)
-    elif extension in ('.mpp', '.xml'):
+    elif extension in ('.mpp', '.xml', '.xer'):
         from .project_files import read_project_file
         table = read_project_file(filename, content)
         names, matrices = [table['sheet']], {table['sheet']: [table['headers'], *[list(row.values()) for row in table['rows']]]}
     else:
-        raise ValueError('Format belum didukung. Gunakan .csv atau .xlsx; MPP/XER ada di roadmap.')
+        raise ValueError('Format belum didukung. Gunakan .csv, .xlsx, .mpp, .xml, atau .xer.')
     sheets = []
     for name in names:
         matrix = matrices.get(name, [])
@@ -124,12 +124,12 @@ def read_source(filename: str, content: bytes, sheet: str | None = None, header_
         all_names, matrices = _xlsx_matrix(content, sheet, reject_formulas=True)
         sheet_name = sheet or all_names[0]
         matrix = matrices[sheet_name]
-    elif extension in ('.mpp', '.xml'):
+    elif extension in ('.mpp', '.xml', '.xer'):
         from .project_files import read_project_file
         table = read_project_file(filename, content)
         sheet_name, matrix = table['sheet'], [table['headers'], *[[row.get(header, '') for header in table['headers']] for row in table['rows']]]
     else:
-        raise ValueError('Format belum didukung. Gunakan .csv atau .xlsx; MPP/XER ada di roadmap.')
+        raise ValueError('Format belum didukung. Gunakan .csv, .xlsx, .mpp, .xml, atau .xer.')
     if not matrix or header_row < 1 or header_row > min(len(matrix), 50):
         raise ValueError('Baris header harus berada di antara 1 dan 50 serta tersedia pada sheet.')
     if len(matrix) - header_row > MAX_ROWS:

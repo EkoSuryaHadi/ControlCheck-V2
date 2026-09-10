@@ -71,7 +71,7 @@ def test_xlsx_selected_sheet_and_formula_rejection(client):
 def test_reporting_date_and_unsupported_type(client):
     assert client.post('/api/projects',json={'name':'X','currency':'IDR','as_of':'yesterday'}).status_code == 422
     pid=project(client)
-    assert client.post(f'/api/projects/{pid}/sources',files={'file':('a.xer',b'anything')}).status_code == 422
+    assert client.post(f'/api/projects/{pid}/sources',files={'file':('a.pdf',b'anything')}).status_code == 422
 
 
 def test_replacement_and_unsupported_answer(client):
@@ -253,3 +253,18 @@ def test_local_assistant_answers_forecast_readiness_without_a_date(client):
     answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apakah data siap untuk forecast?'}).json()
     assert 'siap' in answer['answer'].lower()
     assert 'tanggal selesai' not in answer['answer'].lower()
+
+
+def test_xer_upload_uses_primavera_source_table(client, monkeypatch):
+    from controlcheck import project_files
+    monkeypatch.setattr(project_files, '_xer_tasks', lambda content: [
+        {'uid': 1, 'activity_id': 'P6-1', 'name': 'Primavera activity'},
+    ])
+    pid = project(client)
+    response = client.post(f'/api/projects/{pid}/sources?dataset_type=schedule',
+                           files={'file': ('schedule.xer', b'%T\tPROJECT', 'application/octet-stream')})
+    assert response.status_code == 201, response.text
+    source = response.json()
+    assert source['sheet'] == 'Primavera P6'
+    assert source['dataset_type'] == 'schedule'
+    assert 'Calendar' in source['headers']

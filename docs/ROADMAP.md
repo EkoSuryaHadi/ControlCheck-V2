@@ -8,7 +8,7 @@
 | 2.5 — snapshot history | Publication dates, immutable history and consecutive-period comparison | Deltas preserve unknown values, source scope changes are explicit, and no causal/forecast claim is made |
 | 3 — operational MVP | OIDC, tenant authorization, PostgreSQL migrations, object storage, queued ingestion, audit trail, backup and deletion | Security review, restore exercise, load checks, retention and authorization acceptance |
 | 4 — reporting and pilot | Report templates, PDF/XLSX exports, stakeholder review flow, pilot feedback | Reports reconcile to approved source snapshots and meet pilot usability targets |
-| 5 — schedule intelligence | MPP/XML and P6 XER adapters, relationships, calendars, constraints and baselines | Golden-file parity against scheduling tool outputs; explicit unsupported construct diagnostics |
+| 5 — schedule intelligence | MPP/XML and P6 XER adapters are enabled; relationship facts and P6 metadata are retained, while calendar/constraint/baseline calculation remains planned | Golden-file parity against scheduling tool outputs; explicit unsupported construct diagnostics |
 | 6 — forecasting | Forecast Readiness gate is enabled; scenario model, forecast ranges and completion projections remain planned | Documented assumptions, calibrated backtesting and uncertainty; no guarantees from sparse data |
 | 7 — agentic assistance | Read-only investigation agents, then approval-gated action proposals | Permission checks, dry run, idempotent execution, audit and rollback strategy per action |
 

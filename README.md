@@ -8,7 +8,7 @@ This is a new, independent development scaffold. It does not import, migrate or 
 
 ## Run locally (Windows)
 
-Prerequisites: Python 3.11+, Node.js 22.12+, and Java 17+ for direct MPP import. CSV/XLSX/Project XML do not require Java.
+Prerequisites: Python 3.11+, Node.js 22.12+, and Java 17+ for direct MPP or Primavera P6 XER import. CSV/XLSX/Project XML do not require Java.
 
 ```powershell
 cd E:/project/ControlCheck-V2
@@ -45,7 +45,7 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 ## What works / what is a foundation
 
-- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic Forecast Readiness gate, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
+- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML/Primavera P6 XER, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic Forecast Readiness gate, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
 - Interfaces prepared: XER importer, forecast method/range calculation and agent action proposals.
 - Not connected: forecast date/probability calculation, production authentication, tenant permissions, queued ingestion, PDF export and autonomous actions.
 

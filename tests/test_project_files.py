@@ -39,3 +39,44 @@ def test_project_xml_reads_task_predecessor_uids():
       <Tasks><Task><UID>2</UID><Name>Successor</Name><PredecessorLink><PredecessorUID>1</PredecessorUID></PredecessorLink></Task></Tasks>
     </Project>''')
     assert tasks[0]['predecessor_ids'] == ['1']
+
+
+def test_normalize_tasks_prefers_primavera_activity_id_and_metadata():
+    result = normalize_tasks([{
+        'uid': 9001, 'activity_id': 'ENG-010', 'name': 'Engineering',
+        'calendar': '6D Calendar', 'constraint_type': 'Start On',
+        'constraint_date': '2026-10-01', 'baseline_start': '2026-09-01',
+        'baseline_finish': '2026-09-10',
+    }])
+    row = result['rows'][0]
+    assert row['Activity ID'] == 'ENG-010'
+    assert row['Calendar'] == '6D Calendar'
+    assert row['Baseline Finish'] == '2026-09-10'
+
+
+def test_normalize_tasks_resolves_predecessors_to_activity_ids():
+    result = normalize_tasks([
+        {'uid': 1, 'activity_id': 'A-100', 'name': 'First'},
+        {'uid': 2, 'activity_id': 'B-200', 'name': 'Second', 'predecessor_uids': [1]},
+    ])
+    assert result['rows'][1]['Predecessor IDs'] == 'A-100'
+import pytest
+from controlcheck import project_files
+from controlcheck.project_files import read_project_file
+
+
+def test_read_project_file_routes_xer_to_adapter(monkeypatch):
+    monkeypatch.setattr(project_files, '_xer_tasks', lambda content: [
+        {'uid': 1, 'activity_id': 'P6-1', 'name': 'P6 task'},
+    ])
+    result = read_project_file('schedule.xer', b'%T\tPROJECT')
+    assert result['sheet'] == 'Primavera P6'
+    assert result['rows'][0]['Activity ID'] == 'P6-1'
+
+
+def test_xer_parser_unavailable_has_clear_diagnostic(monkeypatch):
+    def unavailable(content):
+        raise ValueError('Parser XER belum tersedia di server.')
+    monkeypatch.setattr(project_files, '_xer_tasks', unavailable)
+    with pytest.raises(ValueError, match='Parser XER belum tersedia'):
+        read_project_file('schedule.xer', b'%T\tPROJECT')

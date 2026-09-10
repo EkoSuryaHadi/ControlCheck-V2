@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-HEADERS = ['Activity ID', 'Name', 'Planned Start', 'Planned Finish', 'Actual Progress', 'Budget', 'Actual Cost', 'Task UID', 'Is Critical', 'Is Milestone', 'Total Slack', 'Predecessor IDs']
+HEADERS = ['Activity ID', 'Name', 'Planned Start', 'Planned Finish', 'Actual Progress', 'Budget', 'Actual Cost', 'Task UID', 'Is Critical', 'Is Milestone', 'Total Slack', 'Predecessor IDs', 'Calendar', 'Constraint Type', 'Constraint Date', 'Baseline Start', 'Baseline Finish']
 
 
 def _value(value):
@@ -19,22 +19,31 @@ def _date(value):
 
 
 def normalize_tasks(tasks):
+    usable = [task for task in tasks if not task.get('summary') and _value(task.get('name'))]
+    activity_ids = {
+        _value(task.get('uid')): _value(task.get('activity_id')) or _value(task.get('uid'))
+        for task in usable if _value(task.get('uid'))
+    }
     rows = []
-    for task in tasks:
-        if task.get('summary'):
-            continue
+    for task in usable:
         uid = _value(task.get('uid'))
-        name = _value(task.get('name'))
-        if not uid or not name:
+        activity_id = _value(task.get('activity_id')) or uid
+        if not activity_id:
             continue
-        rows.append({'Activity ID': uid, 'Name': name, 'Planned Start': _date(task.get('planned_start')),
-                     'Planned Finish': _date(task.get('planned_finish')),
-                     'Actual Progress': _value(task.get('percent_complete')),
-                     'Budget': _value(task.get('budget')), 'Actual Cost': _value(task.get('actual_cost')),
-                     'Task UID': uid, 'Is Critical': str(bool(task.get('critical'))).lower(),
-                     'Is Milestone': str(bool(task.get('milestone'))).lower(),
-                     'Total Slack': _value(task.get('total_slack')),
-                     'Predecessor IDs': ';'.join(_value(value) for value in task.get('predecessor_ids', []) if _value(value))})
+        predecessor_values = task.get('predecessor_uids', task.get('predecessor_ids', [])) or []
+        predecessors = [activity_ids.get(_value(value), _value(value)) for value in predecessor_values if _value(value)]
+        rows.append({
+            'Activity ID': activity_id, 'Name': _value(task.get('name')),
+            'Planned Start': _date(task.get('planned_start') or task.get('baseline_start')),
+            'Planned Finish': _date(task.get('planned_finish') or task.get('baseline_finish')),
+            'Actual Progress': _value(task.get('percent_complete')),
+            'Budget': _value(task.get('budget')), 'Actual Cost': _value(task.get('actual_cost')),
+            'Task UID': uid, 'Is Critical': str(bool(task.get('critical'))).lower(),
+            'Is Milestone': str(bool(task.get('milestone'))).lower(), 'Total Slack': _value(task.get('total_slack')),
+            'Predecessor IDs': ';'.join(predecessors), 'Calendar': _value(task.get('calendar')),
+            'Constraint Type': _value(task.get('constraint_type')), 'Constraint Date': _date(task.get('constraint_date')),
+            'Baseline Start': _date(task.get('baseline_start')), 'Baseline Finish': _date(task.get('baseline_finish')),
+        })
     if not rows:
         raise ValueError('File project tidak berisi aktivitas yang dapat dianalisis.')
     return {'headers': HEADERS, 'rows': rows, 'sheet': 'Microsoft Project'}
@@ -95,13 +104,57 @@ def _mpp_tasks(content):
             os.unlink(path)
 
 
+
+def _xer_tasks(content):
+    try:
+        import jpype
+        import mpxj  # noqa: F401 -- configures MPXJ jars on the JVM classpath
+        if not jpype.isJVMStarted():
+            java_home = os.getenv('CONTROLCHECK_JAVA_HOME')
+            jvm = os.path.join(java_home, 'bin', 'server', 'jvm.dll') if java_home else None
+            jpype.startJVM(jvm, convertStrings=True)
+        from org.mpxj.reader import UniversalProjectReader
+    except Exception as exc:
+        raise ValueError('Parser XER belum tersedia di server. Pastikan Java 17 dan MPXJ tersedia.') from exc
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.xer', delete=False) as stream:
+            stream.write(content)
+            path = stream.name
+        project = UniversalProjectReader().read(path)
+        tasks = []
+        for task in project.getTasks():
+            calendar = task.getCalendar()
+            source_tasks = [relation.getSourceTask() for relation in task.getPredecessors()]
+            tasks.append({
+                'uid': task.getUniqueID(), 'activity_id': task.getActivityID(), 'name': task.getName(),
+                'summary': bool(task.getSummary()), 'planned_start': task.getBaselineStart() or task.getStart(),
+                'planned_finish': task.getBaselineFinish() or task.getFinish(),
+                'baseline_start': task.getBaselineStart(), 'baseline_finish': task.getBaselineFinish(),
+                'percent_complete': task.getPercentageComplete(), 'budget': task.getBaselineCost() or task.getCost(),
+                'actual_cost': task.getActualCost(), 'critical': bool(task.getCritical()),
+                'milestone': bool(task.getMilestone()), 'total_slack': task.getTotalSlack(),
+                'calendar': calendar.getName() if calendar is not None else None,
+                'constraint_type': task.getConstraintType(), 'constraint_date': task.getConstraintDate(),
+                'predecessor_uids': [source.getUniqueID() for source in source_tasks if source is not None],
+            })
+        return tasks
+    except Exception as exc:
+        raise ValueError('File Primavera P6 XER tidak dapat dibaca.') from exc
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
+
 def read_project_file(filename, content):
     extension = Path(filename).suffix.lower()
     if extension == '.mpp':
         result = normalize_tasks(_mpp_tasks(content))
     elif extension == '.xml':
         result = normalize_tasks(_xml_tasks(content))
+    elif extension == '.xer':
+        result = normalize_tasks(_xer_tasks(content))
+        result['sheet'] = 'Primavera P6'
     else:
-        raise ValueError('Format project harus .mpp atau .xml.')
+        raise ValueError('Format project harus .mpp, .xml, atau .xer.')
     result['filename'] = Path(filename.replace('\\', '/')).name
     return result

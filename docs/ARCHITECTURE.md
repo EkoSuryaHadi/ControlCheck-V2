@@ -6,7 +6,7 @@ Use a modular monorepo: React/TypeScript/Vite client and Python/FastAPI service.
 ```mermaid
 flowchart LR
   UI[Project workspace] --> API[FastAPI /api]
-  API --> Import[Ingestion Agent: CSV / XLSX / MPP / XML]
+  API --> Import[Ingestion Agent: CSV / XLSX / MPP / XML / XER]
   Import --> Mapping[Deterministic mapping + decision receipt]
   Mapping --> Quality[Data quality engine]
   Quality --> Model[Versioned semantic snapshot]
@@ -21,9 +21,9 @@ flowchart LR
 | Path | Responsibility |
 |---|---|
 | apps/web/src | Workspace navigation, import review, insights, assistant and reports |
-| apps/api/controlcheck/importers.py | Bounded CSV/XLSX/MPP/XML reading and source identity |
+| apps/api/controlcheck/importers.py | Bounded CSV/XLSX/MPP/XML/XER reading and source identity |
 | apps/api/controlcheck/ingestion.py | Automatic classification, mapping, validation, reconciliation and receipt |
-| apps/api/controlcheck/project_files.py | Microsoft Project MPP/XML adapter and task normalization |
+| apps/api/controlcheck/project_files.py | Microsoft Project MPP/XML and Primavera P6 XER adapter and task normalization |
 | apps/api/controlcheck/semantic.py | Mapping suggestions, canonical fields and row validation |
 | apps/api/controlcheck/analytics.py | Pure snapshot measures and evidence-backed insight rules |
 | apps/api/controlcheck/forecast_readiness.py | Pure evidence sufficiency gate for a future forecast method |
