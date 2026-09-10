@@ -222,3 +222,34 @@ def test_local_assistant_compares_published_snapshots(client):
     answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apa yang berubah sejak laporan sebelumnya?'}).json()
     assert answer['mode'] == 'local_analytics'
     assert 'Dibanding snapshot v1' in answer['answer']
+
+def publish_two_forecast_ready_snapshots(client):
+    pid = project(client)
+    data = (b'Activity ID,Name,Planned Start,Planned Finish,Actual Progress,Predecessor IDs\n'
+            b'A,Foundation,2026-09-01,2026-09-10,100,\n'
+            b'B,Steel,2026-09-11,2026-09-20,20,A')
+    for as_of in ('2026-09-08', '2026-09-15'):
+        source = upload(client, pid, data)
+        mapping = {item['column']: item['field'] for item in source['suggestions'] if item['field']}
+        published = client.post(f"/api/projects/{pid}/sources/{source['id']}/publish", json={'mapping': mapping, 'as_of': as_of})
+        assert published.status_code == 200, published.text
+    return pid
+
+
+def test_forecast_readiness_requires_published_snapshot(client):
+    pid = project(client)
+    assert client.get(f'/api/projects/{pid}/forecast-readiness').status_code == 409
+
+
+def test_overview_embeds_forecast_readiness_after_publication(client):
+    pid = publish_two_forecast_ready_snapshots(client)
+    overview = client.get(f'/api/projects/{pid}/overview').json()
+    assert overview['forecast_readiness']['snapshot_id'] == overview['snapshot']['id']
+    assert overview['forecast_readiness']['status'] == 'ready_for_method'
+
+
+def test_local_assistant_answers_forecast_readiness_without_a_date(client):
+    pid = publish_two_forecast_ready_snapshots(client)
+    answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apakah data siap untuk forecast?'}).json()
+    assert 'siap' in answer['answer'].lower()
+    assert 'tanggal selesai' not in answer['answer'].lower()

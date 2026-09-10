@@ -12,6 +12,7 @@ from .importers import MAX_BYTES, inspect_source, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
 from .comparison import compare_snapshots
+from .forecast_readiness import assess_forecast_readiness
 from .assistant import report
 from .grounded import GroundedAssistant, MODELS, SumoPodGateway, SumoPodMappingProvider
 from .reconciliation import reconcile
@@ -93,6 +94,11 @@ def create_app(db_path=None):
         if not found:
             raise HTTPException(409, 'Publikasikan data yang valid terlebih dahulu.')
         return found
+
+    def readiness_for(pid, active):
+        history = app.state.repo.snapshots(pid)
+        analysis = analyze(active['rows'], active['as_of'])
+        return assess_forecast_readiness(active, history, analysis)
 
     def public_source(s):
         preview = [{k: v for k, v in row.items() if k != '__source_row__'} for row in s['rows'][:5]]
@@ -223,7 +229,8 @@ def create_app(db_path=None):
         history = [dict(id=item['id'], version=item['version'], as_of=item['as_of'], filename=item['filename'], sheet=item['sheet']) for item in app.state.repo.snapshots(pid)]
         previous = app.state.repo.previous_snapshot(pid, s['id']) if s else None
         return dict(project=p, snapshot=s, analysis=analyze(s['rows'],s['as_of']) if s else None,
-                    history=history, comparison=compare_snapshots(previous, s) if s else None)
+                    history=history, comparison=compare_snapshots(previous, s) if s else None,
+                    forecast_readiness=readiness_for(pid, s) if s else None)
 
     @app.post('/api/projects/{pid}/assistant')
     def ask(pid: str, body: Question):
@@ -232,7 +239,9 @@ def create_app(db_path=None):
             raise HTTPException(422, 'Model tidak didukung.')
         previous = app.state.repo.previous_snapshot(pid, active['id'])
         comparison = compare_snapshots(previous, active)
-        response = assistant.answer(body.question, active, body.model, comparison) if assistant else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active, comparison)
+        forecast_readiness = readiness_for(pid, active)
+        response = (assistant.answer(body.question, active, body.model, comparison, forecast_readiness) if assistant
+                    else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active, comparison, forecast_readiness))
         app.state.repo.save_conversation(pid, active['id'], body.question, response)
         return response
 
@@ -240,6 +249,10 @@ def create_app(db_path=None):
     def comparison(pid: str):
         active = snapshot(pid)
         return compare_snapshots(app.state.repo.previous_snapshot(pid, active['id']), active)
+
+    @app.get('/api/projects/{pid}/forecast-readiness')
+    def forecast_readiness(pid: str):
+        return readiness_for(pid, snapshot(pid))
 
     @app.get('/api/projects/{pid}/conversations')
     def conversations(pid: str):

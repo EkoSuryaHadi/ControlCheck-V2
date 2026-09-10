@@ -1,3 +1,4 @@
+import json
 import httpx
 
 
@@ -54,3 +55,18 @@ def test_sumopod_mapping_rejects_unknown_and_duplicate_targets():
     suggestions = SumoPodMappingProvider(gateway).suggest(['Kode', 'Nama', 'Aneh'])
     assert [item['field'] for item in suggestions] == ['activity_id', None, None]
     assert suggestions[0]['confidence'] == 0.85
+
+
+def test_sumopod_context_contains_forecast_readiness():
+    from controlcheck.grounded import GroundedAssistant, SumoPodGateway
+    readiness = {'status': 'not_ready', 'blockers': ['Publikasikan dua snapshot.'], 'checks': []}
+
+    def handler(request):
+        prompt = json.loads(request.content)['messages'][1]['content']
+        assert 'forecast_readiness' in prompt
+        return httpx.Response(200, json={'choices': [{'message': {'content':
+            '{"answer":"Data belum siap untuk forecast.","citations":["source-1|Schedule|2"]}'}}]})
+
+    gateway = SumoPodGateway('test-key', client=httpx.Client(transport=httpx.MockTransport(handler)))
+    answer = GroundedAssistant(gateway).answer('Apakah data siap forecast?', snapshot(), forecast_readiness=readiness)
+    assert answer['mode'] == 'sumopod_grounded'

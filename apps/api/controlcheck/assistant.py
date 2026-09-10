@@ -4,17 +4,29 @@ from .analytics import analyze
 
 
 class AssistantProvider(Protocol):
-    def answer(self, question: str, snapshot: dict, comparison: dict | None = None) -> dict: ...
+    def answer(self, question: str, snapshot: dict, comparison: dict | None = None, forecast_readiness: dict | None = None) -> dict: ...
 
 
 class LocalAssistant:
-    def answer(self, question, snapshot, comparison=None):
+    def answer(self, question, snapshot, comparison=None, forecast_readiness=None):
         result = analyze(snapshot['rows'], snapshot['as_of'])
         m = result['metrics']
         q = question.lower()
         unsupported = ('kenapa', 'mengapa', 'why', 'forecast', 'kemungkinan', 'prediksi', 'penyebab', 'tren')
         references = result['evidence']
-        if any(word in q for word in unsupported):
+        if any(word in q for word in ('forecast', 'kesiapan data', 'siap untuk')):
+            if not forecast_readiness:
+                answer = 'Kelayakan forecast belum tersedia untuk snapshot ini.'
+                references = []
+            else:
+                labels = {'not_ready': 'Belum siap untuk forecast', 'needs_attention': 'Perlu perbaikan sebelum forecast', 'ready_for_method': 'Siap memilih metode forecast'}
+                answer = labels[forecast_readiness['status']] + '. '
+                if forecast_readiness['blockers']:
+                    answer += 'Yang perlu dilengkapi: ' + ' '.join(forecast_readiness['blockers'])
+                else:
+                    answer += 'Data memenuhi gate kelayakan. Forecast belum dihitung; metode dan asumsi tetap harus dipilih serta divalidasi.'
+                references = result['evidence']
+        elif any(word in q for word in unsupported):
             answer = 'Data belum cukup untuk menjawab pertanyaan ini. Snapshot ini tidak memuat riwayat, dependency network, atau model forecasting yang diperlukan.'
             references = []
         elif any(word in q for word in ('berubah', 'perubahan', 'sejak laporan', 'periode sebelumnya', 'bandingkan')):
