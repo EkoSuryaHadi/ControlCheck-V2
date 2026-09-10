@@ -147,3 +147,24 @@ def test_dependency_impact_is_absent_without_actual_links():
     result = analyze(clean, '2026-09-08')
     assert result['metrics']['downstream_activities'] is None
     assert 'dependency_impact' not in {item['id'] for item in result['insights']}
+
+
+def test_blank_predecessor_cell_is_an_explicit_root_when_column_is_mapped():
+    result = validate([{'Activity ID': 'A', 'Name': 'Root', 'Predecessor IDs': ''}],
+                      {'Activity ID': 'activity_id', 'Name': 'name', 'Predecessor IDs': 'predecessor_ids'},
+                      's', 'Schedule', dataset_type='schedule')
+    assert result['rows'][0]['predecessor_ids'] == ()
+
+
+def test_schedule_integrity_detects_cycles_and_isolated_activities():
+    raw = [
+        {'Activity ID': 'A', 'Name': 'Cycle A', 'Predecessor IDs': 'B'},
+        {'Activity ID': 'B', 'Name': 'Cycle B', 'Predecessor IDs': 'A'},
+        {'Activity ID': 'C', 'Name': 'Isolated', 'Predecessor IDs': ''},
+    ]
+    mapping = {'Activity ID': 'activity_id', 'Name': 'name', 'Predecessor IDs': 'predecessor_ids'}
+    clean = validate(raw, mapping, 's', 'Schedule', dataset_type='schedule')['rows']
+    result = analyze(clean, '2026-09-08')
+    assert result['metrics']['dependency_cycle_count'] == 1
+    assert result['metrics']['isolated_activities'] == 1
+    assert {'dependency_cycle', 'isolated_activity'} <= {item['id'] for item in result['insights']}

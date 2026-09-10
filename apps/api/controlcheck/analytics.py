@@ -47,6 +47,38 @@ def analyze(rows, as_of):
                 successors.setdefault(predecessor_id, []).append(row)
             else:
                 external_links += 1
+    cycle_components, indexes, lowlinks, stack, on_stack = [], {}, {}, [], set()
+    next_index = 0
+
+    def visit(activity_id):
+        nonlocal next_index
+        indexes[activity_id] = lowlinks[activity_id] = next_index
+        next_index += 1
+        stack.append(activity_id)
+        on_stack.add(activity_id)
+        for successor in successors.get(activity_id, []):
+            successor_id = successor['activity_id']
+            if successor_id not in indexes:
+                visit(successor_id)
+                lowlinks[activity_id] = min(lowlinks[activity_id], lowlinks[successor_id])
+            elif successor_id in on_stack:
+                lowlinks[activity_id] = min(lowlinks[activity_id], indexes[successor_id])
+        if lowlinks[activity_id] == indexes[activity_id]:
+            component = []
+            while True:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == activity_id:
+                    break
+            if len(component) > 1 or any(item['activity_id'] == activity_id for item in successors.get(activity_id, [])):
+                cycle_components.append(component)
+
+    for activity_id in by_id:
+        if activity_id not in indexes:
+            visit(activity_id)
+    isolated = ([row for row in rows if not row.get('predecessor_ids') and not successors.get(row['activity_id'])]
+                if len(dependency_known) == n and n > 1 else [])
     impacted_ids, frontier = set(), [r['activity_id'] for r in critical_overdue]
     while frontier:
         predecessor_id = frontier.pop()
@@ -69,7 +101,9 @@ def analyze(rows, as_of):
                    dependency_coverage=f'{len(dependency_known)}/{n}',
                    downstream_activities=len(impacted) if dependency_known else None,
                    downstream_milestones=len(downstream_milestones) if dependency_known else None,
-                   dependency_external_links=external_links if dependency_known else None)
+                   dependency_external_links=external_links if dependency_known else None,
+                   dependency_cycle_count=len(cycle_components) if dependency_known else None,
+                   isolated_activities=len(isolated) if len(dependency_known) == n and n > 1 else None)
     if any(metrics[k] is None for k in ('bac','ac','pv','ev','progress','spi','cpi')):
         limitations.append('Sebagian metrik tidak tersedia karena data tidak lengkap atau penyebut nol.')
     if len(covered) != n:
@@ -112,6 +146,19 @@ def analyze(rows, as_of):
                              detail=f'{len(downstream_milestones)} di antaranya adalah milestone penerus. Relasi berasal dari dependency schedule.',
                              action='Tinjau urutan kerja dan rencana pemulihan bersama planner sebelum menetapkan dampak tanggal.',
                              evidence=impact_evidence))
+    if cycle_components:
+        cycle_rows = [by_id[activity_id] for component in cycle_components for activity_id in component]
+        insights.append(dict(id='dependency_cycle', severity='high',
+                             title=f'{len(cycle_components)} dependency cycle perlu ditinjau',
+                             detail='Aktivitas dalam cycle saling bergantung berdasarkan file schedule.',
+                             action='Periksa relationship di schedule sumber sebelum memakai hasil analisis network.',
+                             evidence=[row['evidence'] for row in cycle_rows]))
+    if isolated:
+        insights.append(dict(id='isolated_activity', severity='medium',
+                             title=f'{len(isolated)} aktivitas terisolasi dalam dependency schedule',
+                             detail='Aktivitas ini tidak memiliki predecessor atau successor pada snapshot yang diunggah.',
+                             action='Konfirmasi apakah aktivitas ini memang berdiri sendiri atau ada relasi yang belum diekspor.',
+                             evidence=[row['evidence'] for row in isolated]))
     if spi is not None and spi < 1:
         insights.append(dict(id='spi', severity='medium', title=f'SPI {spi:.2f}: earned value di bawah rencana',
                              detail='EV / PV < 1. Ini bukan estimasi jumlah hari keterlambatan.',

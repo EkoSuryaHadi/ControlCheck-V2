@@ -17,6 +17,12 @@ class LocalAssistant:
         if any(word in q for word in unsupported):
             answer = 'Data belum cukup untuk menjawab pertanyaan ini. Snapshot ini tidak memuat riwayat, dependency network, atau model forecasting yang diperlukan.'
             references = []
+        elif any(word in q for word in ('integritas', 'integrity', 'cycle', 'siklus')):
+            answer = (f"Dependency cycle: {m['dependency_cycle_count'] if m['dependency_cycle_count'] is not None else 'belum tersedia'}; "
+                      f"aktivitas terisolasi: {m['isolated_activities'] if m['isolated_activities'] is not None else 'belum tersedia'}; "
+                      f"link di luar snapshot: {m['dependency_external_links'] if m['dependency_external_links'] is not None else 'belum tersedia'}.")
+            integrity = [item for item in result['insights'] if item['id'] in ('dependency_cycle', 'isolated_activity')]
+            references = [evidence for item in integrity for evidence in item['evidence']]
         elif any(word in q for word in ('critical', 'kritis', 'dependency', 'dependensi', 'dampak')):
             if m['critical_count'] is None:
                 answer = 'Status critical belum tersedia dari file schedule, sehingga jalur critical dan dependency tidak dapat dinilai.'

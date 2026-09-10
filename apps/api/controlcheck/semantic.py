@@ -95,6 +95,8 @@ def validate(raw_rows, mapping, source_id, sheet, options=None, dataset_type='co
                 continue
             value = str(raw.get(column, '')).strip()
             if not value:
+                if field == 'predecessor_ids':
+                    item[field] = ()
                 continue
             if field in ('activity_id', 'name'):
                 item[field] = value
