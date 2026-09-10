@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, json } from './api';
-import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight, DatasetType, Reconciliation, IngestionReceipt, AiModels } from './types';
+import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight, DatasetType, Reconciliation, IngestionReceipt, AiModels, Conversation } from './types';
 
 const tabs = ['Overview', 'Data Center', 'AI Assistant', 'Insights', 'Reports', 'Settings'] as const;
 type Tab = typeof tabs[number];
@@ -89,6 +89,7 @@ function Workspace({project}: {project: Project}) {
   }
   useEffect(() => { let alive=true; Promise.all([api<Overview>(base+'/overview'),api<Source[]>(base+'/sources')]).then(([o,s])=>{if(alive){setOverview(o);setSources(s);}}).catch(e=>{if(alive)setError(message(e));}).finally(()=>{if(alive)setLoading(false);}); return()=>{alive=false;}; }, [base]);
   useEffect(() => { api<AiModels>('/ai/models').then(value=>{setAiModels(value);setModel(value.default_model)}).catch(()=>{}); }, []);
+  useEffect(() => { api<Conversation[]>(base+'/conversations').then(items=>setAnswers(items.map(item=>({question:item.question,response:item.response})))).catch(()=>{}); }, [base]);
   async function run(label: string, action: ()=>Promise<void>) {
     setBusy(label); setError(''); setNotice('');
     try { await action(); } catch(e) { setError(message(e)); } finally { setBusy(''); }
