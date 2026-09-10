@@ -12,11 +12,21 @@ class LocalAssistant:
         result = analyze(snapshot['rows'], snapshot['as_of'])
         m = result['metrics']
         q = question.lower()
-        unsupported = ('kenapa', 'mengapa', 'why', 'forecast', 'kemungkinan', 'prediksi', 'critical', 'kritis', 'penyebab', 'tren')
+        unsupported = ('kenapa', 'mengapa', 'why', 'forecast', 'kemungkinan', 'prediksi', 'penyebab', 'tren')
         references = result['evidence']
         if any(word in q for word in unsupported):
             answer = 'Data belum cukup untuk menjawab pertanyaan ini. Snapshot ini tidak memuat riwayat, dependency network, atau model forecasting yang diperlukan.'
             references = []
+        elif any(word in q for word in ('critical', 'kritis', 'dependency', 'dependensi', 'dampak')):
+            if m['critical_count'] is None:
+                answer = 'Status critical belum tersedia dari file schedule, sehingga jalur critical dan dependency tidak dapat dinilai.'
+                references = []
+            else:
+                answer = (f"Aktivitas critical: {m['critical_count']}; critical terlambat: {m['critical_overdue']}. "
+                          f"Aktivitas pada jalur dampak: {m['downstream_activities'] if m['downstream_activities'] is not None else 'belum tersedia'}; "
+                          f"milestone penerus: {m['downstream_milestones'] if m['downstream_milestones'] is not None else 'belum tersedia'}.")
+                issue = next((i for i in result['insights'] if i['id'] == 'dependency_impact'), None)
+                references = issue['evidence'] if issue else []
         elif any(word in q for word in ('delay', 'terlambat', 'overdue')):
             issue = next((i for i in result['insights'] if i['id'] == 'overdue'), None)
             answer = f"Aktivitas terlambat: {m['overdue'] if m['overdue'] is not None else 'belum tersedia'}. Cakupan: {m['overdue_coverage']}."

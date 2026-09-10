@@ -118,3 +118,32 @@ def test_schedule_intelligence_makes_no_claim_without_source_metadata():
     result = analyze(clean, '2026-09-08')
     assert result['metrics']['critical_count'] is None
     assert not {'critical_overdue', 'milestone_overdue', 'critical_exposure'} & {item['id'] for item in result['insights']}
+
+
+def test_dependency_impact_follows_actual_predecessor_links_only():
+    raw = [
+        dict(activity_id='A', name='Late critical', planned_finish='2026-09-01', actual_progress='20', is_critical='true'),
+        dict(activity_id='B', name='Downstream work', planned_finish='2026-09-30', actual_progress='0', predecessor_ids='A'),
+        dict(activity_id='C', name='Milestone', planned_finish='2026-10-01', actual_progress='0', is_milestone='true', predecessor_ids='B'),
+        dict(activity_id='D', name='Unrelated', planned_finish='2026-09-30', actual_progress='0'),
+    ]
+    mapping = {key: key for key in raw[0]}
+    # Apply a complete mapping across the union of columns.
+    mapping.update({'is_milestone': 'is_milestone', 'predecessor_ids': 'predecessor_ids'})
+    for row in raw:
+        for key in mapping:
+            row.setdefault(key, '')
+    clean = validate(raw, mapping, 's', 'Schedule', dataset_type='schedule')['rows']
+    result = analyze(clean, '2026-09-08')
+    assert result['metrics']['downstream_activities'] == 2
+    assert result['metrics']['downstream_milestones'] == 1
+    impact = next(item for item in result['insights'] if item['id'] == 'dependency_impact')
+    assert len(impact['evidence']) == 3
+
+
+def test_dependency_impact_is_absent_without_actual_links():
+    clean = validate(rows(), {k: k for k in rows()[0]}, 's', 'CSV')['rows']
+    clean[0]['is_critical'] = True
+    result = analyze(clean, '2026-09-08')
+    assert result['metrics']['downstream_activities'] is None
+    assert 'dependency_impact' not in {item['id'] for item in result['insights']}

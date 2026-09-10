@@ -178,3 +178,16 @@ def test_agent_does_not_publish_unmatched_progress_activity(client):
     assert response.status_code == 200, response.text
     assert response.json()['status'] == 'needs_attention'
     assert client.get(f'/api/projects/{pid}/overview').json()['snapshot'] is None
+
+
+def test_assistant_reports_dependency_impact_when_schedule_supplies_links(client):
+    pid = project(client)
+    content = (b'Activity ID,Name,Planned Finish,Actual Progress,Is Critical,Is Milestone,Predecessor IDs\n'
+               b'A,Late critical,2026-09-01,20,true,false,\n'
+               b'B,Downstream milestone,2026-09-30,0,false,true,A')
+    source = upload(client, pid, content)
+    mapping = {item['column']: item['field'] for item in source['suggestions'] if item['field']}
+    assert client.post(f"/api/projects/{pid}/sources/{source['id']}/publish", json={'mapping': mapping}).status_code == 200
+    answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apa dampak dependency critical?'}).json()
+    assert 'jalur dampak: 1' in answer['answer']
+    assert len(answer['evidence']) == 2

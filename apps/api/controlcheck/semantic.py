@@ -17,6 +17,7 @@ FIELDS = {
     'is_critical': ['is critical', 'critical'],
     'is_milestone': ['is milestone', 'milestone'],
     'total_slack': ['total slack', 'slack'],
+    'predecessor_ids': ['predecessor ids', 'predecessors', 'predecessor id'],
 }
 
 REQUIRED_FIELDS = {
@@ -107,6 +108,8 @@ def validate(raw_rows, mapping, source_id, sheet, options=None, dataset_type='co
                     issue(errors, number, field, 'invalid_boolean', 'Nilai harus true/false.')
                 else:
                     item[field] = value.lower() in ('true', '1')
+            elif field == 'predecessor_ids':
+                item[field] = tuple(part.strip() for part in value.split(';') if part.strip())
             else:
                 try:
                     val = parse_number(value, field)

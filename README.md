@@ -45,7 +45,7 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 ## What works / what is a foundation
 
-- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions, deterministic schedule/progress/cost analytics, evidence-backed rule insights, read-only local analytical answers and Markdown export.
+- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, read-only local analytical answers and Markdown export.
 - Interfaces prepared: model-based schema mapping, LLM assistant, XER importer, forecasting and agent action proposals.
 - Not connected: external AI provider, production authentication, tenant permissions, queued ingestion, historical comparisons, PDF export and autonomous actions.
 

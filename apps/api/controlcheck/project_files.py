@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-HEADERS = ['Activity ID', 'Name', 'Planned Start', 'Planned Finish', 'Actual Progress', 'Budget', 'Actual Cost', 'Task UID', 'Is Critical', 'Is Milestone', 'Total Slack']
+HEADERS = ['Activity ID', 'Name', 'Planned Start', 'Planned Finish', 'Actual Progress', 'Budget', 'Actual Cost', 'Task UID', 'Is Critical', 'Is Milestone', 'Total Slack', 'Predecessor IDs']
 
 
 def _value(value):
@@ -33,7 +33,8 @@ def normalize_tasks(tasks):
                      'Budget': _value(task.get('budget')), 'Actual Cost': _value(task.get('actual_cost')),
                      'Task UID': uid, 'Is Critical': str(bool(task.get('critical'))).lower(),
                      'Is Milestone': str(bool(task.get('milestone'))).lower(),
-                     'Total Slack': _value(task.get('total_slack'))})
+                     'Total Slack': _value(task.get('total_slack')),
+                     'Predecessor IDs': ';'.join(_value(value) for value in task.get('predecessor_ids', []) if _value(value))})
     if not rows:
         raise ValueError('File project tidak berisi aktivitas yang dapat dianalisis.')
     return {'headers': HEADERS, 'rows': rows, 'sheet': 'Microsoft Project'}
@@ -52,7 +53,8 @@ def _xml_tasks(content):
                       'planned_finish': value('BaselineFinish') or value('Finish'),
                       'percent_complete': value('PercentComplete'), 'budget': value('BaselineCost') or value('Cost'),
                       'actual_cost': value('ActualCost'), 'critical': value('Critical') == '1',
-                      'milestone': value('Milestone') == '1', 'total_slack': value('TotalSlack')})
+                      'milestone': value('Milestone') == '1', 'total_slack': value('TotalSlack'),
+                      'predecessor_ids': [link.findtext('{*}PredecessorUID') for link in task.findall('{*}PredecessorLink')]})
     return tasks
 
 
@@ -81,7 +83,10 @@ def _mpp_tasks(content):
                           'percent_complete': task.getPercentageComplete(),
                           'budget': task.getBaselineCost() or task.getCost(), 'actual_cost': task.getActualCost(),
                           'critical': bool(task.getCritical()), 'milestone': bool(task.getMilestone()),
-                          'total_slack': task.getTotalSlack()})
+                          'total_slack': task.getTotalSlack(),
+                          'predecessor_ids': [relation.getSourceTask().getUniqueID()
+                                              for relation in task.getPredecessors()
+                                              if relation.getSourceTask() is not None]})
         return tasks
     except Exception as exc:
         raise ValueError('File MPP tidak dapat dibaca. Coba ekspor Microsoft Project XML.') from exc
