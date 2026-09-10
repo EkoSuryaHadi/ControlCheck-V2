@@ -191,3 +191,34 @@ def test_assistant_reports_dependency_impact_when_schedule_supplies_links(client
     answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apa dampak dependency critical?'}).json()
     assert 'jalur dampak: 1' in answer['answer']
     assert len(answer['evidence']) == 2
+
+def test_history_comparison_uses_snapshot_reporting_dates(client):
+    pid = project(client)
+    first = upload(client, pid, b'Activity ID,Name,Planned Finish,Actual Progress\nA1,Foundation,2026-09-07,50\nB1,Steel,2026-09-20,0')
+    first_mapping = {item['column']: item['field'] for item in first['suggestions'] if item['field']}
+    assert client.post(f"/api/projects/{pid}/sources/{first['id']}/publish", json={'mapping': first_mapping}).status_code == 200
+
+    second = upload(client, pid, b'Activity ID,Name,Planned Finish,Actual Progress\nA1,Foundation,2026-09-07,100\nC1,Equipment,2026-09-10,10')
+    second_mapping = {item['column']: item['field'] for item in second['suggestions'] if item['field']}
+    published = client.post(f"/api/projects/{pid}/sources/{second['id']}/publish", json={'mapping': second_mapping, 'as_of': '2026-09-15'})
+    assert published.status_code == 200, published.text
+    assert published.json()['as_of'] == '2026-09-15'
+
+    overview = client.get(f'/api/projects/{pid}/overview').json()
+    assert [item['version'] for item in overview['history']] == [2, 1]
+    assert overview['comparison']['activities']['added_ids'] == ['C1']
+    assert overview['comparison']['activities']['removed_ids'] == ['B1']
+    assert overview['comparison']['activities']['newly_overdue_ids'] == ['C1']
+    assert client.get(f'/api/projects/{pid}/comparison').json()['current_snapshot']['as_of'] == '2026-09-15'
+
+def test_local_assistant_compares_published_snapshots(client):
+    pid = project(client)
+    first = upload(client, pid, b'Activity ID,Name,Planned Finish,Actual Progress\nA1,Foundation,2026-09-07,50')
+    first_mapping = {item['column']: item['field'] for item in first['suggestions'] if item['field']}
+    client.post(f"/api/projects/{pid}/sources/{first['id']}/publish", json={'mapping': first_mapping})
+    second = upload(client, pid, b'Activity ID,Name,Planned Finish,Actual Progress\nA1,Foundation,2026-09-07,100')
+    second_mapping = {item['column']: item['field'] for item in second['suggestions'] if item['field']}
+    client.post(f"/api/projects/{pid}/sources/{second['id']}/publish", json={'mapping': second_mapping, 'as_of': '2026-09-15'})
+    answer = client.post(f'/api/projects/{pid}/assistant', json={'question': 'Apa yang berubah sejak laporan sebelumnya?'}).json()
+    assert answer['mode'] == 'local_analytics'
+    assert 'Dibanding snapshot v1' in answer['answer']

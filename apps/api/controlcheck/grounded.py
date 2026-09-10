@@ -38,11 +38,11 @@ def _token(evidence):
 class GroundedAssistant:
     def __init__(self, gateway): self.gateway = gateway
 
-    def answer(self, question, snapshot, model=None):
+    def answer(self, question, snapshot, model=None, comparison=None):
         result = analyze(snapshot['rows'], snapshot['as_of'])
         allowed = {_token(row['evidence']): row['evidence'] for row in snapshot['rows']}
         context = {'snapshot': {'version': snapshot['version'], 'as_of': snapshot['as_of'], 'currency': snapshot['currency']},
-                   'metrics': result['metrics'],
+                   'metrics': result['metrics'], 'comparison': comparison,
                    'insights': [
                        {key: value for key, value in insight.items() if key != 'evidence'} |
                        {'citations': [_token(evidence) for evidence in insight['evidence']]}
@@ -76,7 +76,7 @@ class GroundedAssistant:
                             for index, insight in enumerate(priorities)), mode='local_analytics_fallback',
                             snapshot_id=snapshot['id'], version=snapshot['version'], evidence=evidence,
                             limitations=[*result['limitations'], 'Jawaban AI tidak dapat diverifikasi; rekomendasi aturan snapshot digunakan.'])
-            fallback = LocalAssistant().answer(question, snapshot)
+            fallback = LocalAssistant().answer(question, snapshot, comparison)
             return {**fallback, 'mode': 'local_analytics_fallback',
                     'limitations': [*fallback['limitations'], 'Jawaban AI tidak dapat diverifikasi; analitik lokal digunakan.']}
 

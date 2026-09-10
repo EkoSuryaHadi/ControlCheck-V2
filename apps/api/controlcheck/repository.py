@@ -85,34 +85,48 @@ class Repository:
         with self.connection() as db:
             return [json.loads(row['payload']) for row in db.execute('SELECT payload FROM conversations WHERE project_id=? ORDER BY rowid ASC', (project_id,))]
 
-    def publish(self, project, source, mapping, rows):
+    def snapshots(self, project_id):
+        with self.connection() as db:
+            rows = db.execute('SELECT payload FROM snapshots WHERE project_id=? ORDER BY version DESC', (project_id,))
+            return [json.loads(row['payload']) for row in rows]
+
+    def previous_snapshot(self, project_id, snapshot_id):
+        snapshots = self.snapshots(project_id)
+        for index, item in enumerate(snapshots):
+            if item['id'] == snapshot_id:
+                return snapshots[index + 1] if index + 1 < len(snapshots) else None
+        return None
+
+    def publish(self, project, source, mapping, rows, as_of=None):
         canonical_mapping = json.dumps(mapping, sort_keys=True)
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
-            previous = db.execute('SELECT id,payload FROM snapshots WHERE project_id=? AND source_id=? AND mapping=?',
-                                  (project['id'],source['id'],canonical_mapping)).fetchone()
+            existing = db.execute('SELECT id,payload FROM snapshots WHERE project_id=? AND source_id=? AND mapping=?',
+                                  (project['id'],source['id'],canonical_mapping)).fetchall()
+            previous = next((row for row in existing if json.loads(row['payload'])['as_of'] == (as_of or project['as_of'])), None)
             if previous:
-                # Re-select the existing snapshot when the user deliberately republishes it.
+                # Re-select only the same source, mapping, and reporting date.
                 db.execute('UPDATE projects SET active_snapshot=? WHERE id=?',(previous['id'],project['id']))
                 return json.loads(previous['payload'])
             version = db.execute('SELECT COALESCE(MAX(version),0)+1 FROM snapshots WHERE project_id=?',(project['id'],)).fetchone()[0]
             snapshot = dict(id=str(uuid4()), project_id=project['id'], source_id=source['id'],
                             version=version, semantic_version='activity-snapshot/v1',
-                            as_of=project['as_of'], currency=project['currency'], filename=source['filename'],
+                            as_of=as_of or project['as_of'], currency=project['currency'], filename=source['filename'],
                             sheet=source['sheet'], sha256=source['sha256'], rows=rows)
             db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)',
                        (snapshot['id'],project['id'],source['id'],version,canonical_mapping,json.dumps(snapshot)))
             db.execute('UPDATE projects SET active_snapshot=? WHERE id=?',(snapshot['id'],project['id']))
             return snapshot
 
-    def publish_reconciliation(self, project, schedule_source, sources, mappings, rows):
+    def publish_reconciliation(self, project, schedule_source, sources, mappings, rows, as_of=None):
         """Persist an activity snapshot produced from Schedule plus optional inputs."""
         canonical_mapping = json.dumps(mappings, sort_keys=True)
         source_ids = [source['id'] for source in sources]
         with self.connection() as db:
             db.execute('BEGIN IMMEDIATE')
-            previous = db.execute('SELECT id,payload FROM snapshots WHERE project_id=? AND source_id=? AND mapping=?',
-                                  (project['id'], schedule_source['id'], canonical_mapping)).fetchone()
+            existing = db.execute('SELECT id,payload FROM snapshots WHERE project_id=? AND source_id=? AND mapping=?',
+                                  (project['id'], schedule_source['id'], canonical_mapping)).fetchall()
+            previous = next((row for row in existing if json.loads(row['payload'])['as_of'] == (as_of or project['as_of'])), None)
             if previous:
                 db.execute('UPDATE projects SET active_snapshot=? WHERE id=?', (previous['id'], project['id']))
                 return json.loads(previous['payload'])
@@ -121,7 +135,7 @@ class Repository:
             snapshot = dict(
                 id=str(uuid4()), project_id=project['id'], source_id=schedule_source['id'],
                 source_ids=source_ids, version=version, semantic_version='activity-snapshot/v2',
-                as_of=project['as_of'], currency=project['currency'], filename=schedule_source['filename'],
+                as_of=as_of or project['as_of'], currency=project['currency'], filename=schedule_source['filename'],
                 sheet=schedule_source['sheet'], sha256=schedule_source['sha256'], rows=rows,
             )
             db.execute('INSERT INTO snapshots VALUES (?,?,?,?,?,?)',

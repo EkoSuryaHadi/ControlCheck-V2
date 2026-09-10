@@ -22,6 +22,22 @@
         }
       }
     },
+    "/api/ai/models": {
+      "get": {
+        "summary": "Ai Models",
+        "operationId": "ai_models_api_ai_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/fields": {
       "get": {
         "summary": "Fields",
@@ -314,6 +330,23 @@
             "schema": {
               "type": "string",
               "title": "Pid"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
             }
           }
         ],
@@ -639,6 +672,80 @@
         }
       }
     },
+    "/api/projects/{pid}/comparison": {
+      "get": {
+        "summary": "Comparison",
+        "operationId": "comparison_api_projects__pid__comparison_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{pid}/conversations": {
+      "get": {
+        "summary": "Conversations",
+        "operationId": "conversations_api_projects__pid__conversations_get",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{pid}/report": {
       "get": {
         "summary": "Export Report",
@@ -754,6 +861,18 @@
             },
             "type": "object",
             "title": "Mapping"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
           }
         },
         "type": "object",
@@ -796,6 +915,17 @@
             "maxLength": 2000,
             "minLength": 1,
             "title": "Question"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -875,6 +1005,18 @@
             "type": "object",
             "title": "Cost Mapping",
             "default": {}
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
           }
         },
         "type": "object",

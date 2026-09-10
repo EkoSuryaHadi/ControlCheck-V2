@@ -4,11 +4,11 @@ from .analytics import analyze
 
 
 class AssistantProvider(Protocol):
-    def answer(self, question: str, snapshot: dict) -> dict: ...
+    def answer(self, question: str, snapshot: dict, comparison: dict | None = None) -> dict: ...
 
 
 class LocalAssistant:
-    def answer(self, question, snapshot):
+    def answer(self, question, snapshot, comparison=None):
         result = analyze(snapshot['rows'], snapshot['as_of'])
         m = result['metrics']
         q = question.lower()
@@ -17,6 +17,21 @@ class LocalAssistant:
         if any(word in q for word in unsupported):
             answer = 'Data belum cukup untuk menjawab pertanyaan ini. Snapshot ini tidak memuat riwayat, dependency network, atau model forecasting yang diperlukan.'
             references = []
+        elif any(word in q for word in ('berubah', 'perubahan', 'sejak laporan', 'periode sebelumnya', 'bandingkan')):
+            if not comparison:
+                answer = 'Belum ada snapshot sebelumnya untuk dibandingkan. Publikasikan pembaruan dengan tanggal laporan yang berbeda.'
+                references = []
+            else:
+                delta = comparison['metrics']
+                activities = comparison['activities']
+                def change(value, suffix=''):
+                    return ('belum tersedia' if value is None else f"{value:+.2f}{suffix}")
+                answer = (f"Dibanding snapshot v{comparison['previous_snapshot']['version']} ({comparison['previous_snapshot']['as_of']}), "
+                          f"progress {change(delta['progress_delta'], '%')}; SPI {change(delta['spi_delta'])}; "
+                          f"CPI {change(delta['cpi_delta'])}; aktivitas terlambat {change(delta['overdue_delta'])}. "
+                          f"Baru terlambat: {len(activities['newly_overdue_ids'])}; tidak lagi terlambat: {len(activities['resolved_overdue_ids'])}; "
+                          f"progress berubah: {len(activities['progress_changed_ids'])}.")
+                references = result['evidence']
         elif any(word in q for word in ('integritas', 'integrity', 'cycle', 'siklus')):
             answer = (f"Dependency cycle: {m['dependency_cycle_count'] if m['dependency_cycle_count'] is not None else 'belum tersedia'}; "
                       f"aktivitas terisolasi: {m['isolated_activities'] if m['isolated_activities'] is not None else 'belum tersedia'}; "

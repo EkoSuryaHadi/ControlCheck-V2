@@ -11,6 +11,7 @@ from .repository import Repository
 from .importers import MAX_BYTES, inspect_source, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
+from .comparison import compare_snapshots
 from .assistant import report
 from .grounded import GroundedAssistant, MODELS, SumoPodGateway, SumoPodMappingProvider
 from .reconciliation import reconcile
@@ -32,6 +33,7 @@ class NewProject(BaseModel):
 
 class MappingInput(BaseModel):
     mapping: dict[str, str | None]
+    as_of: date | None = None
 
 
 class ReconciliationInput(BaseModel):
@@ -41,6 +43,7 @@ class ReconciliationInput(BaseModel):
     progress_mapping: dict[str, str | None] = {}
     cost_source_id: str | None = None
     cost_mapping: dict[str, str | None] = {}
+    as_of: date | None = None
 
 
 class Question(BaseModel):
@@ -132,8 +135,10 @@ def create_app(db_path=None):
             file.file.close()
 
     @app.post('/api/projects/{pid}/ingestions', status_code=201)
-    async def ingest_sources(pid: str, response: Response, files: list[UploadFile] = File(...)):
+    async def ingest_sources(pid: str, response: Response, as_of: date | None = None, files: list[UploadFile] = File(...)):
         current_project = project(pid)
+        if as_of:
+            current_project = {**current_project, 'as_of': as_of.isoformat()}
         uploads = []
         try:
             for file in files:
@@ -176,7 +181,7 @@ def create_app(db_path=None):
         checked = validate(s['rows'],body.mapping,sid,s['sheet'],s.get('normalization'),s.get('dataset_type', 'combined'))
         if checked['errors']:
             raise HTTPException(422, dict(message='Data belum lolos validasi.', errors=checked['errors']))
-        return app.state.repo.publish(project(pid),s,body.mapping,checked['rows'])
+        return app.state.repo.publish(project(pid),s,body.mapping,checked['rows'], body.as_of.isoformat() if body.as_of else None)
 
     def prepared_reconciliation(pid: str, body: ReconciliationInput):
         def checked(source_id, mapping, expected_type):
@@ -209,22 +214,32 @@ def create_app(db_path=None):
                         cost=body.cost_mapping if cost else None)
         return app.state.repo.publish_reconciliation(project(pid), schedule,
                                                      [item for item in (schedule, progress, cost) if item],
-                                                     mappings, result['rows'])
+                                                     mappings, result['rows'], body.as_of.isoformat() if body.as_of else None)
 
     @app.get('/api/projects/{pid}/overview')
     def overview(pid: str):
         p = project(pid)
         s = app.state.repo.active_snapshot(pid)
-        return dict(project=p, snapshot=s, analysis=analyze(s['rows'],s['as_of']) if s else None)
+        history = [dict(id=item['id'], version=item['version'], as_of=item['as_of'], filename=item['filename'], sheet=item['sheet']) for item in app.state.repo.snapshots(pid)]
+        previous = app.state.repo.previous_snapshot(pid, s['id']) if s else None
+        return dict(project=p, snapshot=s, analysis=analyze(s['rows'],s['as_of']) if s else None,
+                    history=history, comparison=compare_snapshots(previous, s) if s else None)
 
     @app.post('/api/projects/{pid}/assistant')
     def ask(pid: str, body: Question):
         active = snapshot(pid)
         if body.model and body.model not in MODELS:
             raise HTTPException(422, 'Model tidak didukung.')
-        response = assistant.answer(body.question, active, body.model) if assistant else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active)
+        previous = app.state.repo.previous_snapshot(pid, active['id'])
+        comparison = compare_snapshots(previous, active)
+        response = assistant.answer(body.question, active, body.model, comparison) if assistant else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active, comparison)
         app.state.repo.save_conversation(pid, active['id'], body.question, response)
         return response
+
+    @app.get('/api/projects/{pid}/comparison')
+    def comparison(pid: str):
+        active = snapshot(pid)
+        return compare_snapshots(app.state.repo.previous_snapshot(pid, active['id']), active)
 
     @app.get('/api/projects/{pid}/conversations')
     def conversations(pid: str):
