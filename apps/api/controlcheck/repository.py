@@ -23,6 +23,9 @@ class Repository:
                     source_id TEXT NOT NULL REFERENCES sources(id), version INTEGER NOT NULL,
                     mapping TEXT NOT NULL, payload TEXT NOT NULL,
                     UNIQUE(project_id, version));
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+                    snapshot_id TEXT NOT NULL REFERENCES snapshots(id), payload TEXT NOT NULL);
             ''')
 
     @contextmanager
@@ -71,6 +74,16 @@ class Repository:
             row = db.execute('''SELECT s.payload FROM snapshots s JOIN projects p
                 ON p.id=s.project_id AND p.active_snapshot=s.id WHERE p.id=?''',(project_id,)).fetchone()
             return json.loads(row['payload']) if row else None
+
+    def save_conversation(self, project_id, snapshot_id, question, response):
+        entry = dict(id=str(uuid4()), project_id=project_id, snapshot_id=snapshot_id, question=question, response=response)
+        with self.connection() as db:
+            db.execute('INSERT INTO conversations VALUES (?,?,?,?)', (entry['id'], project_id, snapshot_id, json.dumps(entry)))
+        return entry
+
+    def conversations(self, project_id):
+        with self.connection() as db:
+            return [json.loads(row['payload']) for row in db.execute('SELECT payload FROM conversations WHERE project_id=? ORDER BY rowid ASC', (project_id,))]
 
     def publish(self, project, source, mapping, rows):
         canonical_mapping = json.dumps(mapping, sort_keys=True)

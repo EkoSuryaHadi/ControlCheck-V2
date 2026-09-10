@@ -11,7 +11,8 @@ from .repository import Repository
 from .importers import MAX_BYTES, inspect_source, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
-from .assistant import LocalAssistant, report
+from .assistant import report
+from .grounded import GroundedAssistant, MODELS, SumoPodGateway, SumoPodMappingProvider
 from .reconciliation import reconcile
 from .ingestion import run_ingestion
 
@@ -44,6 +45,7 @@ class ReconciliationInput(BaseModel):
 
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    model: str | None = None
 
     @field_validator('question')
     @classmethod
@@ -65,7 +67,9 @@ def create_app(db_path=None):
                   description='Local development API. No authentication; bind only to loopback.')
     app.add_middleware(CORSMiddleware, allow_origins=['http://127.0.0.1:5173','http://localhost:5173'],
                        allow_methods=['GET','POST'], allow_headers=['Content-Type'])
-    mapper, assistant = LocalMappingProvider(), LocalAssistant()
+    gateway = SumoPodGateway()
+    mapper = SumoPodMappingProvider(gateway) if gateway.enabled else LocalMappingProvider()
+    assistant = GroundedAssistant(gateway) if gateway.enabled else None
 
     def project(pid):
         found = app.state.repo.project(pid)
@@ -93,7 +97,11 @@ def create_app(db_path=None):
 
     @app.get('/api/health')
     def health():
-        return dict(status='ok', version='0.1.0', assistant_mode='local_analytics', mapping_mode='local_aliases')
+        return dict(status='ok', version='0.1.0', assistant_mode='sumopod_grounded' if gateway.enabled else 'local_analytics', mapping_mode='sumopod_suggestions' if gateway.enabled else 'local_aliases')
+
+    @app.get('/api/ai/models')
+    def ai_models():
+        return dict(enabled=gateway.enabled, default_model=gateway.model, models=list(MODELS))
 
     @app.get('/api/fields')
     def fields():
@@ -211,7 +219,17 @@ def create_app(db_path=None):
 
     @app.post('/api/projects/{pid}/assistant')
     def ask(pid: str, body: Question):
-        return assistant.answer(body.question,snapshot(pid))
+        active = snapshot(pid)
+        if body.model and body.model not in MODELS:
+            raise HTTPException(422, 'Model tidak didukung.')
+        response = assistant.answer(body.question, active, body.model) if assistant else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active)
+        app.state.repo.save_conversation(pid, active['id'], body.question, response)
+        return response
+
+    @app.get('/api/projects/{pid}/conversations')
+    def conversations(pid: str):
+        project(pid)
+        return app.state.repo.conversations(pid)
 
     @app.get('/api/projects/{pid}/report', response_class=PlainTextResponse)
     def export_report(pid: str):
