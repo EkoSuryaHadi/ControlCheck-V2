@@ -8,12 +8,25 @@ from pathlib import Path
 from typing import Protocol
 
 MAX_BYTES = 5 * 1024 * 1024
+MAX_PROJECT_BYTES = 50 * 1024 * 1024
 MAX_ROWS = 10_000
 MAX_COLUMNS = 100
+PROJECT_EXTENSIONS = ('.mpp', '.xer')
 
 
 class Importer(Protocol):
     def read(self, content: bytes, sheet: str | None = None, header_row: int = 1) -> dict: ...
+
+
+def max_upload_bytes(filename: str) -> int:
+    """Return the per-file upload cap without relaxing tabular uploads."""
+    return MAX_PROJECT_BYTES if Path(filename).suffix.lower() in PROJECT_EXTENSIONS else MAX_BYTES
+
+
+def _check_size(filename: str, content: bytes):
+    limit = max_upload_bytes(filename)
+    if not content or len(content) > limit:
+        raise ValueError(f'File kosong atau melebihi batas {limit // (1024 * 1024)} MB untuk format ini.')
 
 
 def text_value(value):
@@ -89,8 +102,7 @@ def _suggest_header(matrix):
 
 
 def inspect_source(filename: str, content: bytes) -> dict:
-    if not content or len(content) > MAX_BYTES:
-        raise ValueError('File kosong atau melebihi batas 5 MB.')
+    _check_size(filename, content)
     extension = Path(filename).suffix.lower()
     if extension == '.csv':
         names, matrices = ['CSV'], {'CSV': _csv_matrix(content)}
@@ -114,8 +126,7 @@ def inspect_source(filename: str, content: bytes) -> dict:
 
 def read_source(filename: str, content: bytes, sheet: str | None = None, header_row: int = 1,
                 date_format: str = 'iso', decimal_separator: str = 'dot', percent_scale: str = 'points') -> dict:
-    if not content or len(content) > MAX_BYTES:
-        raise ValueError('File kosong atau melebihi batas 5 MB.')
+    _check_size(filename, content)
     extension = Path(filename).suffix.lower()
     sheet_name = 'CSV'
     if extension == '.csv':

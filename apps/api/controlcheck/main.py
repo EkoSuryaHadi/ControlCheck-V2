@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 from .repository import Repository
-from .importers import MAX_BYTES, inspect_source, read_source
+from .importers import inspect_source, max_upload_bytes, read_source
 from .semantic import FIELDS, LocalMappingProvider, validate
 from .analytics import analyze
 from .comparison import compare_snapshots
@@ -133,8 +133,9 @@ def create_app(db_path=None):
     def inspect_upload(pid: str, file: UploadFile = File(...)):
         project(pid)
         try:
-            content = file.file.read(MAX_BYTES + 1)
-            return inspect_source(file.filename or '', content)
+            filename = file.filename or ''
+            content = file.file.read(max_upload_bytes(filename) + 1)
+            return inspect_source(filename, content)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         finally:
@@ -148,7 +149,8 @@ def create_app(db_path=None):
         uploads = []
         try:
             for file in files:
-                uploads.append((file.filename or '', await file.read(MAX_BYTES + 1)))
+                filename = file.filename or ''
+                uploads.append((filename, await file.read(max_upload_bytes(filename) + 1)))
             result = run_ingestion(current_project, uploads, app.state.repo, mapper)
             if result['status'] == 'needs_attention':
                 response.status_code = 200
@@ -165,8 +167,9 @@ def create_app(db_path=None):
                       dataset_type: Literal['combined','schedule','progress','cost'] = 'combined'):
         project(pid)
         try:
-            content = file.file.read(MAX_BYTES + 1)
-            table = read_source(file.filename or '', content, sheet, header_row, date_format,
+            filename = file.filename or ''
+            content = file.file.read(max_upload_bytes(filename) + 1)
+            table = read_source(filename, content, sheet, header_row, date_format,
                                 decimal_separator, percent_scale)
             table['dataset_type'] = dataset_type
         except ValueError as exc:

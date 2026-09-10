@@ -41,7 +41,7 @@ Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Keep 
 6. Open Reports and download the Markdown report.
 7. Upload quality-errors.csv to exercise blocking validation without replacing approved data.
 
-Use one complete leaf-activity snapshot per upload. A new publication replaces the active view rather than merging files. Do not combine WBS summaries and their child rows. CSV is UTF-8 with comma, semicolon or tab delimiter. Data Center previews the first rows, suggests a header row, lists XLSX sheets and requires explicit date (`YYYY-MM-DD`, `DD/MM/YYYY` or `MM/DD/YYYY`), decimal and progress-scale choices. Formula cells must first be converted to values. Currency: one project currency; no symbols or thousands separators in numeric cells. Limits: 5 MB, 10,000 rows, 100 columns.
+Use one complete leaf-activity snapshot per upload. A new publication replaces the active view rather than merging files. Do not combine WBS summaries and their child rows. CSV is UTF-8 with comma, semicolon or tab delimiter. Data Center previews the first rows, suggests a header row, lists XLSX sheets and requires explicit date (`YYYY-MM-DD`, `DD/MM/YYYY` or `MM/DD/YYYY`), decimal and progress-scale choices. Formula cells must first be converted to values. Currency: one project currency; no symbols or thousands separators in numeric cells. Limits: CSV/XLSX 5 MB; MPP/XER 50 MB; 10,000 rows/activities; 100 columns.
 
 ## What works / what is a foundation
 

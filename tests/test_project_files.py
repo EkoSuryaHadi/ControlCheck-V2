@@ -80,3 +80,18 @@ def test_xer_parser_unavailable_has_clear_diagnostic(monkeypatch):
     monkeypatch.setattr(project_files, '_xer_tasks', unavailable)
     with pytest.raises(ValueError, match='Parser XER belum tersedia'):
         read_project_file('schedule.xer', b'%T\tPROJECT')
+
+
+def test_project_file_upload_limit_is_larger_than_tabular_limit():
+    from controlcheck.importers import MAX_BYTES, MAX_PROJECT_BYTES, max_upload_bytes
+    assert max_upload_bytes('schedule.xer') == MAX_PROJECT_BYTES
+    assert max_upload_bytes('schedule.mpp') == MAX_PROJECT_BYTES
+    assert max_upload_bytes('schedule.xlsx') == MAX_BYTES
+    assert MAX_PROJECT_BYTES == 50 * 1024 * 1024
+
+
+def test_xer_size_check_uses_project_limit(monkeypatch):
+    from controlcheck import importers
+    monkeypatch.setattr(importers, 'MAX_PROJECT_BYTES', 10 * 1024 * 1024)
+    with pytest.raises(ValueError, match='10 MB'):
+        importers.inspect_source('schedule.xer', b'x' * (10 * 1024 * 1024 + 1))
