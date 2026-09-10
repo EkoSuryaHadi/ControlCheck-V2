@@ -35,6 +35,16 @@ def test_sumopod_assistant_falls_back_when_response_has_no_valid_citation():
     assert 'tidak dapat diverifikasi' in answer['limitations'][-1]
 
 
+def test_sumopod_action_question_falls_back_to_source_backed_recovery_steps():
+    from controlcheck.grounded import GroundedAssistant, SumoPodGateway
+    gateway = SumoPodGateway('test-key', client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={'choices': [{'message': {'content':
+            '{"answer":"Tanpa sumber","citations":[]}'}}]}))))
+    answer = GroundedAssistant(gateway).answer('Agar tidak terlambat apa yang harus dilakukan?', snapshot())
+    assert answer['mode'] == 'local_analytics_fallback'
+    assert 'Prioritas tindakan' in answer['answer']
+
+
 def test_sumopod_mapping_rejects_unknown_and_duplicate_targets():
     from controlcheck.grounded import SumoPodGateway, SumoPodMappingProvider
 

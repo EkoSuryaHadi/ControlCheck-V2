@@ -63,6 +63,19 @@ class GroundedAssistant:
             return dict(answer=answer.strip(), mode='sumopod_grounded', model=model or self.gateway.model,
                         snapshot_id=snapshot['id'], version=snapshot['version'], evidence=citations, limitations=result['limitations'])
         except Exception:
+            action_words = ('agar', 'harus', 'tindakan', 'langkah', 'perlu dilakukan', 'cegah')
+            if any(word in question.lower() for word in action_words) and result['insights']:
+                priorities = result['insights'][:3]
+                evidence = []
+                for insight in priorities:
+                    for item in insight['evidence']:
+                        if item not in evidence:
+                            evidence.append(item)
+                return dict(answer='Prioritas tindakan berdasarkan snapshot: ' + ' '.join(
+                            f"{index + 1}. {insight['title']}: {insight['action']}"
+                            for index, insight in enumerate(priorities)), mode='local_analytics_fallback',
+                            snapshot_id=snapshot['id'], version=snapshot['version'], evidence=evidence,
+                            limitations=[*result['limitations'], 'Jawaban AI tidak dapat diverifikasi; rekomendasi aturan snapshot digunakan.'])
             fallback = LocalAssistant().answer(question, snapshot)
             return {**fallback, 'mode': 'local_analytics_fallback',
                     'limitations': [*fallback['limitations'], 'Jawaban AI tidak dapat diverifikasi; analitik lokal digunakan.']}
