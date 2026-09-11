@@ -28,6 +28,11 @@ def _date(value):
     return _value(value).replace('T', ' ', 1).split(' ', 1)[0]
 
 
+def _predecessor_task(relation):
+    current = getattr(relation, 'getPredecessorTask', None)
+    return current() if current else relation.getSourceTask()
+
+
 def _xer_tasks_tabular(content):
     """Read core P6 TASK/TASKPRED tables when a Java reader rejects a variant export."""
     try:
@@ -164,9 +169,9 @@ def _mpp_tasks(content):
                           'budget': task.getBaselineCost() or task.getCost(), 'actual_cost': task.getActualCost(),
                           'critical': bool(task.getCritical()), 'milestone': bool(task.getMilestone()),
                           'total_slack': task.getTotalSlack(),
-                          'predecessor_ids': [relation.getSourceTask().getUniqueID()
+                          'predecessor_ids': [_predecessor_task(relation).getUniqueID()
                                               for relation in task.getPredecessors()
-                                              if relation.getSourceTask() is not None]})
+                                              if _predecessor_task(relation) is not None]})
         return tasks
     except Exception as exc:
         raise ValueError('File MPP tidak dapat dibaca. Coba ekspor Microsoft Project XML.') from exc
@@ -200,7 +205,7 @@ def _xer_tasks(content):
         tasks = []
         for task in project.getTasks():
             calendar = task.getCalendar()
-            source_tasks = [relation.getSourceTask() for relation in task.getPredecessors()]
+            source_tasks = [_predecessor_task(relation) for relation in task.getPredecessors()]
             tasks.append({
                 'uid': task.getUniqueID(), 'activity_id': task.getActivityID(), 'name': task.getName(),
                 'summary': bool(task.getSummary()), 'planned_start': task.getBaselineStart() or task.getStart(),

@@ -10,6 +10,7 @@ from typing import Protocol
 MAX_BYTES = 5 * 1024 * 1024
 MAX_PROJECT_BYTES = 50 * 1024 * 1024
 MAX_ROWS = 10_000
+MAX_PROJECT_ROWS = 25_000
 MAX_COLUMNS = 100
 PROJECT_EXTENSIONS = ('.mpp', '.xer')
 
@@ -21,6 +22,10 @@ class Importer(Protocol):
 def max_upload_bytes(filename: str) -> int:
     """Return the per-file upload cap without relaxing tabular uploads."""
     return MAX_PROJECT_BYTES if Path(filename).suffix.lower() in PROJECT_EXTENSIONS else MAX_BYTES
+
+
+def max_source_rows(filename: str) -> int:
+    return MAX_PROJECT_ROWS if Path(filename).suffix.lower() in PROJECT_EXTENSIONS else MAX_ROWS
 
 
 def _check_size(filename: str, content: bytes):
@@ -143,8 +148,9 @@ def read_source(filename: str, content: bytes, sheet: str | None = None, header_
         raise ValueError('Format belum didukung. Gunakan .csv, .xlsx, .mpp, .xml, atau .xer.')
     if not matrix or header_row < 1 or header_row > min(len(matrix), 50):
         raise ValueError('Baris header harus berada di antara 1 dan 50 serta tersedia pada sheet.')
-    if len(matrix) - header_row > MAX_ROWS:
-        raise ValueError('Maksimal 10.000 baris data.')
+    row_limit = max_source_rows(filename)
+    if len(matrix) - header_row > row_limit:
+        raise ValueError(f'Maksimal {row_limit:,} aktivitas/baris data.'.replace(',', '.'))
     headers = [text_value(value) for value in matrix[header_row - 1]]
     if not headers or any(not header for header in headers) or len(set(headers)) != len(headers):
         raise ValueError('Setiap header harus terisi dan unik.')

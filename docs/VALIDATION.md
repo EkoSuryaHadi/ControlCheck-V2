@@ -4,7 +4,7 @@ Verified 10 September 2026 on Windows, Python 3.11 and Node.js 24.3.0.
 
 ## Automated checks
 
-- `.venv/Scripts/python.exe -m pytest tests -q` → **68 passed**, 2 dependency deprecation warnings.
+- `.venv/Scripts/python.exe -m pytest tests -q` → **70 passed**, 2 dependency deprecation warnings.
 - `npm.cmd run build` → **Vite production build succeeded**; TypeScript emitted no errors.
 - `scripts/export_contracts.py` → generated `packages/contracts/openapi.json` successfully.
 - `scripts/make_samples.py` → generated the synthetic `data/samples/project-snapshot.xlsx` companion.

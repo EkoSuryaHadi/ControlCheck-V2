@@ -20,7 +20,7 @@ ControlCheck becomes an AI Project Control Assistant / Project Intelligence Assi
 | Capability | Acceptance target for full MVP | Scaffold coverage |
 |---|---|---|
 | Project workspace | Project-specific source data, configuration and conversation history | Create/select projects; persisted data and settings; conversation is session-only |
-| Upload | CSV/XLSX, clear constraints, sheet/header choice, explicit locale conversion, immutable source identity | File inspection, XLSX sheet list, header suggestion/override, date/decimal/percent settings, CSV/XLSX 5 MB; MPP/XER 50 MB; 10,000 rows / 100 columns, SHA-256 source identity |
+| Upload | CSV/XLSX, clear constraints, sheet/header choice, explicit locale conversion, immutable source identity | File inspection, XLSX sheet list, header suggestion/override, date/decimal/percent settings, CSV/XLSX 5 MB / 10,000 rows; MPP/XER 50 MB / 25,000 activities; 100 columns, SHA-256 source identity |
 | AI schema mapping | Model suggestions, confidence, rationale, manual confirmation and review | Deterministic bilingual suggestions and editable confirmation; provider protocol for future LLM |
 | Quality engine | Required fields, typing, duplicates, ranges and business consistency | Row/field errors block publication; warnings surface incomplete optional facts |
 | Semantic model | Versioned schedule/progress/cost snapshots with provenance | Activity-grain snapshot, project scope, monetary currency at project level, row provenance |

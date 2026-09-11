@@ -117,3 +117,21 @@ def test_xer_tabular_fallback_accepts_windows_1252_export():
     content = ('%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\n%R\t1\tA-100\tPérkerjaan\n%E\n').encode('cp1252')
     result = project_files._xer_tasks_tabular(content)
     assert result[0]['name'] == 'Pérkerjaan'
+
+
+def test_mpxj_relation_uses_current_predecessor_api():
+    class Relation:
+        def getPredecessorTask(self):
+            return 'PREDECESSOR'
+    assert project_files._predecessor_task(Relation()) == 'PREDECESSOR'
+
+
+def test_xer_accepts_more_than_ten_thousand_activities(monkeypatch):
+    from controlcheck import importers
+    monkeypatch.setattr(project_files, 'read_project_file', lambda filename, content: {
+        'sheet': 'Primavera P6',
+        'headers': ['Activity ID', 'Name'],
+        'rows': [{'Activity ID': str(index), 'Name': f'Activity {index}'} for index in range(10_001)],
+    })
+    result = importers.read_source('large.xer', b'valid xer')
+    assert len(result['rows']) == 10_001
