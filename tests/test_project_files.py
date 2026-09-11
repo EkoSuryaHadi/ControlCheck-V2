@@ -95,3 +95,11 @@ def test_xer_size_check_uses_project_limit(monkeypatch):
     monkeypatch.setattr(importers, 'MAX_PROJECT_BYTES', 10 * 1024 * 1024)
     with pytest.raises(ValueError, match='10 MB'):
         importers.inspect_source('schedule.xer', b'x' * (10 * 1024 * 1024 + 1))
+
+
+def test_temp_project_file_cleanup_does_not_mask_parser_result(monkeypatch):
+    def locked(path):
+        raise PermissionError('file is still held by MPXJ')
+    monkeypatch.setattr(project_files.os.path, 'exists', lambda path: True)
+    monkeypatch.setattr(project_files.os, 'unlink', locked)
+    project_files._remove_temp_file('temporary.xer')

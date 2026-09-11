@@ -8,6 +8,16 @@ from pathlib import Path
 HEADERS = ['Activity ID', 'Name', 'Planned Start', 'Planned Finish', 'Actual Progress', 'Budget', 'Actual Cost', 'Task UID', 'Is Critical', 'Is Milestone', 'Total Slack', 'Predecessor IDs', 'Calendar', 'Constraint Type', 'Constraint Date', 'Baseline Start', 'Baseline Finish']
 
 
+def _remove_temp_file(path):
+    """Do not replace a parser result when MPXJ still holds a Windows temp file."""
+    if not path or not os.path.exists(path):
+        return
+    try:
+        os.unlink(path)
+    except PermissionError:
+        pass
+
+
 def _value(value):
     if value is None:
         return ''
@@ -100,8 +110,7 @@ def _mpp_tasks(content):
     except Exception as exc:
         raise ValueError('File MPP tidak dapat dibaca. Coba ekspor Microsoft Project XML.') from exc
     finally:
-        if path and os.path.exists(path):
-            os.unlink(path)
+        _remove_temp_file(path)
 
 
 
@@ -142,8 +151,7 @@ def _xer_tasks(content):
     except Exception as exc:
         raise ValueError('File Primavera P6 XER tidak dapat dibaca.') from exc
     finally:
-        if path and os.path.exists(path):
-            os.unlink(path)
+        _remove_temp_file(path)
 
 def read_project_file(filename, content):
     extension = Path(filename).suffix.lower()
