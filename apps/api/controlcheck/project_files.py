@@ -122,7 +122,7 @@ def _xer_tasks(content):
             java_home = os.getenv('CONTROLCHECK_JAVA_HOME')
             jvm = os.path.join(java_home, 'bin', 'server', 'jvm.dll') if java_home else None
             jpype.startJVM(jvm, convertStrings=True)
-        from org.mpxj.reader import UniversalProjectReader
+        from org.mpxj.primavera import PrimaveraXERFileReader
     except Exception as exc:
         raise ValueError('Parser XER belum tersedia di server. Pastikan Java 17 dan MPXJ tersedia.') from exc
     path = None
@@ -130,7 +130,7 @@ def _xer_tasks(content):
         with tempfile.NamedTemporaryFile(suffix='.xer', delete=False) as stream:
             stream.write(content)
             path = stream.name
-        project = UniversalProjectReader().read(path)
+        project = PrimaveraXERFileReader().read(path)
         tasks = []
         for task in project.getTasks():
             calendar = task.getCalendar()
