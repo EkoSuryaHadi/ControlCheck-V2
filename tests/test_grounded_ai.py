@@ -6,6 +6,8 @@ def snapshot():
     return {
         'id': 'snap-1', 'version': 1, 'as_of': '2026-09-08', 'currency': 'IDR',
         'rows': [dict(activity_id='A1', name='Foundation', planned_finish='2026-09-01', actual_progress=40,
+                      is_critical=True, is_milestone=False, total_slack=-8,
+                      predecessor_ids=('P1',),
                       evidence={'source_id': 'source-1', 'sheet': 'Schedule', 'row': 2})],
     }
 
@@ -43,7 +45,35 @@ def test_sumopod_action_question_falls_back_to_source_backed_recovery_steps():
             '{"answer":"Tanpa sumber","citations":[]}'}}]}))))
     answer = GroundedAssistant(gateway).answer('Agar tidak terlambat apa yang harus dilakukan?', snapshot())
     assert answer['mode'] == 'local_analytics_fallback'
-    assert 'Prioritas tindakan' in answer['answer']
+    assert 'A1' in answer['answer']
+    assert 'P1' in answer['answer']
+    assert 'Planner' in answer['answer']
+    assert '40%' in answer['answer']
+
+
+def test_local_assistant_answers_next_activity_with_specific_recovery_plan():
+    from controlcheck.assistant import LocalAssistant
+
+    answer = LocalAssistant().answer('Kegiatan apa yang harus kita lakukan setelah ini?', snapshot())
+    assert 'A1' in answer['answer']
+    assert 'Foundation' in answer['answer']
+    assert 'P1' in answer['answer']
+    assert 'Planner' in answer['answer']
+
+
+def test_sumopod_receives_ranked_recovery_priorities_for_action_question():
+    from controlcheck.grounded import GroundedAssistant, SumoPodGateway
+
+    def handler(request):
+        prompt = json.loads(request.content)['messages'][1]['content']
+        assert 'recovery_priorities' in prompt
+        assert '"activity_id": "A1"' in prompt
+        return httpx.Response(200, json={'choices': [{'message': {'content':
+            '{"answer":"Kerjakan A1 terlebih dahulu.","citations":["source-1|Schedule|2"]}'}}]})
+
+    gateway = SumoPodGateway('test-key', client=httpx.Client(transport=httpx.MockTransport(handler)))
+    answer = GroundedAssistant(gateway).answer('Kegiatan apa yang harus dilakukan?', snapshot())
+    assert answer['mode'] == 'sumopod_grounded'
 
 
 def test_sumopod_mapping_rejects_unknown_and_duplicate_targets():

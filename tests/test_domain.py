@@ -168,3 +168,17 @@ def test_schedule_integrity_detects_cycles_and_isolated_activities():
     assert result['metrics']['dependency_cycle_count'] == 1
     assert result['metrics']['isolated_activities'] == 1
     assert {'dependency_cycle', 'isolated_activity'} <= {item['id'] for item in result['insights']}
+
+
+def test_recovery_priority_prefers_more_negative_total_slack():
+    raw = [
+        {'Activity ID': 'A', 'Name': 'Less exposed', 'Planned Finish': '2026-09-01',
+         'Actual Progress': '40', 'Is Critical': 'true', 'Total Slack': '-2'},
+        {'Activity ID': 'B', 'Name': 'More exposed', 'Planned Finish': '2026-09-01',
+         'Actual Progress': '40', 'Is Critical': 'true', 'Total Slack': '-10'},
+    ]
+    mapping = {'Activity ID': 'activity_id', 'Name': 'name', 'Planned Finish': 'planned_finish',
+               'Actual Progress': 'actual_progress', 'Is Critical': 'is_critical', 'Total Slack': 'total_slack'}
+    clean = validate(raw, mapping, 's', 'Schedule', dataset_type='schedule')['rows']
+    priorities = analyze(clean, '2026-09-08')['recovery_priorities']
+    assert [item['activity_id'] for item in priorities[:2]] == ['B', 'A']

@@ -14,7 +14,36 @@ class LocalAssistant:
         q = question.lower()
         unsupported = ('kenapa', 'mengapa', 'why', 'forecast', 'kemungkinan', 'prediksi', 'penyebab', 'tren')
         references = result['evidence']
-        if any(word in q for word in ('forecast', 'kesiapan data', 'siap untuk')):
+        action_words = ('setelah ini', 'harus dilakukan', 'apa yang dilakukan', 'apa yang harus',
+                        'tindakan', 'langkah', 'agar tidak', 'cegah')
+        if any(word in q for word in action_words):
+            priorities = result['recovery_priorities']
+            if not priorities:
+                answer = ('Tidak ada aktivitas overdue yang dapat diprioritaskan dari snapshot ini. '
+                          'Planner perlu memeriksa kelengkapan tanggal selesai, progress aktual, critical flag, dan dependency.')
+                references = []
+            else:
+                items = []
+                for index, item in enumerate(priorities):
+                    reasons = [f"terlambat {item['days_overdue']} hari", f"progress {item['actual_progress']:g}%"]
+                    if item['is_critical']:
+                        reasons.insert(0, 'critical')
+                    if item['total_slack'] is not None:
+                        reasons.append(f"total slack {item['total_slack']:g}")
+                    if item['successor_count']:
+                        reasons.append(f"menahan {item['successor_count']} successor")
+                    predecessors = ', '.join(item['predecessor_ids'][:5])
+                    dependency_step = (f"selesaikan atau koreksi predecessor {predecessors}"
+                                       if predecessors else 'validasi bahwa aktivitas memang tidak memiliki predecessor')
+                    items.append(
+                        f"{index + 1}. {item['activity_id']} — {item['name']} ({'; '.join(reasons)}). "
+                        f"Planner: perbarui status, remaining duration, dan relationship; {dependency_step}. "
+                        "Site Team: konfirmasi hambatan, resource, dan target produksi. "
+                        "Output review: PIC, recovery finish, dan target progress laporan berikutnya."
+                    )
+                answer = 'Fokus pekerjaan berikutnya berdasarkan jaringan schedule: ' + ' '.join(items)
+                references = [item['citation'] for item in priorities]
+        elif any(word in q for word in ('forecast', 'kesiapan data', 'siap untuk')):
             if not forecast_readiness:
                 answer = 'Kelayakan forecast belum tersedia untuk snapshot ini.'
                 references = []

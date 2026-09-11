@@ -79,6 +79,29 @@ def analyze(rows, as_of):
             visit(activity_id)
     isolated = ([row for row in rows if not row.get('predecessor_ids') and not successors.get(row['activity_id'])]
                 if len(dependency_known) == n and n > 1 else [])
+    recovery_priorities = []
+    for row in overdue:
+        direct_successors = successors.get(row['activity_id'], [])
+        successor_milestones = [item for item in direct_successors if item.get('is_milestone')]
+        slack = row.get('total_slack')
+        days_overdue = (date.fromisoformat(as_of) - date.fromisoformat(row['planned_finish'])).days
+        recovery_priorities.append({
+            'activity_id': row['activity_id'], 'name': row['name'],
+            'planned_finish': row['planned_finish'], 'actual_progress': row.get('actual_progress'),
+            'days_overdue': days_overdue, 'is_critical': bool(row.get('is_critical')),
+            'total_slack': slack, 'predecessor_ids': list(row.get('predecessor_ids') or []),
+            'successor_count': len(direct_successors),
+            'successor_milestone_count': len(successor_milestones),
+            'successor_ids': [item['activity_id'] for item in direct_successors[:5]],
+            'citation': row['evidence'],
+            '_score': (bool(row.get('is_critical')), slack is not None and slack <= 0,
+                       -slack if slack is not None else float('-inf'),
+                       len(successor_milestones), len(direct_successors), days_overdue,
+                       100 - (row.get('actual_progress') or 0)),
+        })
+    recovery_priorities.sort(key=lambda item: item['_score'], reverse=True)
+    recovery_priorities = [{key: value for key, value in item.items() if key != '_score'}
+                           for item in recovery_priorities[:5]]
     impacted_ids, frontier = set(), [r['activity_id'] for r in critical_overdue]
     while frontier:
         predecessor_id = frontier.pop()
@@ -167,4 +190,5 @@ def analyze(rows, as_of):
         insights.append(dict(id='cpi', severity='high', title=f'CPI {cpi:.2f}: biaya aktual melebihi earned value',
                              detail='EV / AC < 1 pada snapshot ini; tidak membuktikan penyebab biaya.',
                              action='Tinjau actual cost dan kuantitas pekerjaan yang diakui.', evidence=evidence))
-    return dict(metrics=metrics, insights=insights, limitations=limitations, evidence=evidence)
+    return dict(metrics=metrics, insights=insights, recovery_priorities=recovery_priorities,
+                limitations=limitations, evidence=evidence)
