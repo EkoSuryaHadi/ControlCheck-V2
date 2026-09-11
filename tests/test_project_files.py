@@ -103,3 +103,11 @@ def test_temp_project_file_cleanup_does_not_mask_parser_result(monkeypatch):
     monkeypatch.setattr(project_files.os.path, 'exists', lambda path: True)
     monkeypatch.setattr(project_files.os, 'unlink', locked)
     project_files._remove_temp_file('temporary.xer')
+
+
+def test_xer_tabular_fallback_reads_task_and_predecessor_records():
+    content = b'''%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\ttarget_start_date\ttarget_end_date\tphys_complete_pct\tcritical_flag\n%R\t1\tA-100\tFoundation\t2026-01-01 08:00\t2026-01-10 17:00\t40\tY\n%R\t2\tB-200\tStructure\t2026-01-11\t2026-01-20\t0\tN\n%T\tTASKPRED\n%F\ttask_id\tpred_task_id\n%R\t2\t1\n%E\n'''
+    result = project_files._xer_tasks_tabular(content)
+    assert result[0]['activity_id'] == 'A-100'
+    assert result[0]['planned_start'] == '2026-01-01'
+    assert result[1]['predecessor_uids'] == ['1']

@@ -25,7 +25,65 @@ def _value(value):
 
 
 def _date(value):
-    return _value(value).split('T', 1)[0]
+    return _value(value).replace('T', ' ', 1).split(' ', 1)[0]
+
+
+def _xer_tasks_tabular(content):
+    """Read core P6 TASK/TASKPRED tables when a Java reader rejects a variant export."""
+    try:
+        text = content.decode('utf-8-sig')
+    except UnicodeDecodeError as exc:
+        raise ValueError('XER harus menggunakan UTF-8.') from exc
+    tables = {}
+    current = None
+    headers = None
+    for line in text.splitlines():
+        if not line:
+            continue
+        cells = line.split('\t')
+        marker = cells[0]
+        if marker == '%T':
+            current = cells[1].strip() if len(cells) > 1 else None
+            headers = None
+            continue
+        if marker == '%F' and current:
+            headers = [item.strip() for item in cells[1:]]
+            tables[current] = []
+            continue
+        if marker == '%R' and current and headers:
+            values = cells[1:] + [''] * max(0, len(headers) - len(cells) + 1)
+            tables[current].append(dict(zip(headers, values[:len(headers)])))
+    task_records = tables.get('TASK', [])
+    if not task_records:
+        raise ValueError('File XER tidak berisi tabel TASK yang dapat dianalisis.')
+    predecessors = {}
+    for record in tables.get('TASKPRED', []):
+        task_id = _value(record.get('task_id'))
+        pred_id = _value(record.get('pred_task_id') or record.get('pred_taskid'))
+        if task_id and pred_id:
+            predecessors.setdefault(task_id, []).append(pred_id)
+    tasks = []
+    for record in task_records:
+        uid = _value(record.get('task_id') or record.get('uid'))
+        name = _value(record.get('task_name') or record.get('name'))
+        if not uid or not name:
+            continue
+        task_type = _value(record.get('task_type')).upper()
+        tasks.append({
+            'uid': uid, 'activity_id': _value(record.get('task_code') or record.get('activity_id') or uid),
+            'name': name, 'planned_start': _date(record.get('target_start_date') or record.get('early_start_date')),
+            'planned_finish': _date(record.get('target_end_date') or record.get('early_end_date')),
+            'percent_complete': record.get('phys_complete_pct') or record.get('complete_pct'),
+            'budget': record.get('target_cost') or record.get('budget'),
+            'actual_cost': record.get('act_cost') or record.get('actual_cost'),
+            'critical': _value(record.get('critical_flag')).upper() in ('Y', '1', 'TRUE'),
+            'milestone': task_type in ('TT_MILE', 'MILESTONE') or _value(record.get('milestone_flag')).upper() in ('Y', '1'),
+            'total_slack': record.get('total_float_hr_cnt') or record.get('total_slack'),
+            'predecessor_uids': predecessors.get(uid, []),
+        })
+    if not tasks:
+        raise ValueError('File XER tidak berisi aktivitas yang dapat dianalisis.')
+    return tasks
 
 
 def normalize_tasks(tasks):
@@ -130,7 +188,12 @@ def _xer_tasks(content):
         with tempfile.NamedTemporaryFile(suffix='.xer', delete=False) as stream:
             stream.write(content)
             path = stream.name
-        project = PrimaveraXERFileReader().read(path)
+        try:
+            project = PrimaveraXERFileReader().read(path)
+            if project is None:
+                raise ValueError('MPXJ tidak menghasilkan project file.')
+        except Exception:
+            return _xer_tasks_tabular(content)
         tasks = []
         for task in project.getTasks():
             calendar = task.getCalendar()
