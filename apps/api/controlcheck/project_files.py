@@ -1,5 +1,6 @@
 """Microsoft Project file adapter normalized to the spreadsheet source shape."""
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -26,6 +27,13 @@ def _value(value):
 
 def _date(value):
     return _value(value).replace('T', ' ', 1).split(' ', 1)[0]
+
+
+def _duration_number(value):
+    """Return MPXJ duration magnitudes without their display unit."""
+    text = _value(value)
+    match = re.fullmatch(r'([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*[A-Za-z]+', text)
+    return match.group(1) if match else text
 
 
 def _predecessor_task(relation):
@@ -115,7 +123,8 @@ def normalize_tasks(tasks):
             'Actual Progress': _value(task.get('percent_complete')),
             'Budget': _value(task.get('budget')), 'Actual Cost': _value(task.get('actual_cost')),
             'Task UID': uid, 'Is Critical': str(bool(task.get('critical'))).lower(),
-            'Is Milestone': str(bool(task.get('milestone'))).lower(), 'Total Slack': _value(task.get('total_slack')),
+            'Is Milestone': str(bool(task.get('milestone'))).lower(),
+            'Total Slack': _duration_number(task.get('total_slack')),
             'Predecessor IDs': ';'.join(predecessors), 'Calendar': _value(task.get('calendar')),
             'Constraint Type': _value(task.get('constraint_type')), 'Constraint Date': _date(task.get('constraint_date')),
             'Baseline Start': _date(task.get('baseline_start')), 'Baseline Finish': _date(task.get('baseline_finish')),

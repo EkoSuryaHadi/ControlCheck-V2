@@ -27,6 +27,14 @@ def test_normalize_tasks_preserves_schedule_intelligence_metadata():
     assert row['Total Slack'] == '0'
 
 
+def test_normalize_tasks_converts_mpxj_duration_slack_to_number():
+    result = normalize_tasks([{
+        'uid': 2, 'name': 'Foundation', 'summary': False,
+        'total_slack': '11439.5h',
+    }])
+    assert result['rows'][0]['Total Slack'] == '11439.5'
+
+
 def test_normalize_tasks_preserves_actual_predecessor_task_uids():
     result = normalize_tasks([{'uid': 2, 'name': 'Foundation', 'summary': False,
                                'predecessor_ids': ['1', 3]}])
