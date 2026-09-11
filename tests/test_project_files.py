@@ -111,3 +111,9 @@ def test_xer_tabular_fallback_reads_task_and_predecessor_records():
     assert result[0]['activity_id'] == 'A-100'
     assert result[0]['planned_start'] == '2026-01-01'
     assert result[1]['predecessor_uids'] == ['1']
+
+
+def test_xer_tabular_fallback_accepts_windows_1252_export():
+    content = ('%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\n%R\t1\tA-100\tPérkerjaan\n%E\n').encode('cp1252')
+    result = project_files._xer_tasks_tabular(content)
+    assert result[0]['name'] == 'Pérkerjaan'

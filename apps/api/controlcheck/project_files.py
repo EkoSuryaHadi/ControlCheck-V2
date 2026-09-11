@@ -32,8 +32,11 @@ def _xer_tasks_tabular(content):
     """Read core P6 TASK/TASKPRED tables when a Java reader rejects a variant export."""
     try:
         text = content.decode('utf-8-sig')
-    except UnicodeDecodeError as exc:
-        raise ValueError('XER harus menggunakan UTF-8.') from exc
+    except UnicodeDecodeError:
+        try:
+            text = content.decode('cp1252')
+        except UnicodeDecodeError as exc:
+            raise ValueError('Encoding XER tidak didukung.') from exc
     tables = {}
     current = None
     headers = None
