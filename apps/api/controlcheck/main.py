@@ -65,6 +65,7 @@ def create_app(db_path=None):
         'CONTROLCHECK_ALLOWED_ORIGINS',
         'http://127.0.0.1:5173,http://localhost:5173',
     ).split(',') if item.strip()]
+    allowed_origin_regex = os.getenv('CONTROLCHECK_ALLOWED_ORIGIN_REGEX') or None
 
     @asynccontextmanager
     async def lifespan(app):
@@ -73,7 +74,7 @@ def create_app(db_path=None):
 
     app = FastAPI(title='ControlCheck AI 2.0', version='0.1.0', lifespan=lifespan,
                   description='Local development API. No authentication; bind only to loopback.')
-    app.add_middleware(CORSMiddleware, allow_origins=allowed_origins,
+    app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_origin_regex=allowed_origin_regex,
                        allow_methods=['GET','POST'], allow_headers=['Content-Type'])
     gateway = SumoPodGateway()
     mapper = SumoPodMappingProvider(gateway) if gateway.enabled else LocalMappingProvider()
