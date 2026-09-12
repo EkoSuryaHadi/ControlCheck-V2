@@ -1,4 +1,5 @@
 name = "controlcheck-api"
+account_id = "cdd15c66730ca49091861331627a62a8"
 main = "src/index.ts"
 compatibility_date = "2026-09-11"
 
