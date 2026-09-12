@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, json } from './api';
+import { api, apiUrl, json } from './api';
 import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight, DatasetType, Reconciliation, IngestionReceipt, AiModels, Conversation, SnapshotComparison, ForecastReadiness } from './types';
 
 const tabs = ['Overview', 'Data Center', 'AI Assistant', 'Insights', 'Reports', 'Settings'] as const;
@@ -159,7 +159,7 @@ function Workspace({project}: {project: Project}) {
     const response=await api<Answer>(base+'/assistant',json({question:q,...(aiModels?.enabled && model ? {model} : {})})); setAnswers(old=>[...old,{question:q,response}]); setQuestion('');
   }); }
   async function previewReport() { await run('Menyiapkan laporan…',async()=>{
-    const response=await fetch('/api'+base+'/report'); if(!response.ok) throw new Error('Laporan belum tersedia. Publikasikan data terlebih dahulu.'); setReport(await response.text());
+    const response=await fetch(apiUrl(base+'/report')); if(!response.ok) throw new Error('Laporan belum tersedia. Publikasikan data terlebih dahulu.'); setReport(await response.text());
   }); }
   function downloadReport() { const url=URL.createObjectURL(new Blob([report],{type:'text/markdown;charset=utf-8'})); const link=document.createElement('a');link.href=url;link.download='controlcheck-report.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
   const snapshot=overview?.snapshot, analysis=overview?.analysis, metrics=analysis?.metrics, comparison=overview?.comparison, forecastReadiness=overview?.forecast_readiness;

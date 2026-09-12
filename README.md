@@ -31,6 +31,27 @@ npm.cmd run dev
 
 Open http://127.0.0.1:5173. API documentation: http://127.0.0.1:8000/docs. Keep both terminals running. SQLite is created automatically in data/local; project data survives restarts. No API key is needed. `.env.example` documents the optional database path; this scaffold reads process environment variables, not .env files automatically.
 
+## Free remote demo: Vercel + local API tunnel
+
+The API needs Python and Java to parse MPP/XER, so a free static host cannot run it. For a short demonstration, keep the API running on this computer and expose it through a free temporary Cloudflare Quick Tunnel. The computer and both terminals must remain running; the generated URL changes whenever the tunnel stops. Do not expose real project data through this no-authentication demo setup.
+
+1. Start the API, allowing only the deployed Vercel origin to call it:
+
+```powershell
+$env:CONTROLCHECK_ALLOWED_ORIGINS="https://your-controlcheck.vercel.app"
+.venv/Scripts/python.exe -m uvicorn controlcheck.main:app --app-dir apps/api --host 127.0.0.1 --port 8000
+```
+
+2. In a second terminal, run from `infra/cloudflare-api`:
+
+```powershell
+npx.cmd wrangler tunnel quick-start http://127.0.0.1:8000
+```
+
+3. Copy the generated `https://*.trycloudflare.com` URL into the Vercel environment variable `VITE_API_URL`, then redeploy the frontend. Do not append `/api` to that value.
+
+Quick Tunnel is only for testing. A shared deployment requires authentication, durable storage, and a paid compute service that supports the Python/Java runtime.
+
 ## First walkthrough
 
 1. Create a project, choose IDR and reporting date **2026-09-08** for the synthetic sample.
