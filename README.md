@@ -97,3 +97,7 @@ npm.cmd run build
 See [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Screen inventory](docs/SCREEN_INVENTORY.md), [Roadmap](docs/ROADMAP.md), [Implementation plan](docs/IMPLEMENTATION_PLAN.md), and [Validation](docs/VALIDATION.md).
 
 Before real multiuser deployment: authentication, authorization, migrations, original-file retention/deletion, audit, backup/restore, body limits and workload tests are required. This increment is intended for loopback-only development.
+
+### UI workspace (15 September 2026)
+
+Frontend memakai identitas navy, putih lembut, dan hijau, navigasi berbahasa Indonesia, akses Upload Data/Tanya AI pada halaman proyek, serta label mode assistant berdasarkan konfigurasi aktif. Status pemrosesan upload masih menampilkan satu status proses; progres per tahap belum tersedia dari API.

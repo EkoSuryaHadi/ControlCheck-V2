@@ -20,3 +20,7 @@
 5. Select an LLM provider and data-processing policy, then implement the protocols with a mocked evaluation suite before using real project data.
 
 No calendar commitments are assumed. Finish each exit gate before enabling dependent capabilities.
+
+### UI workspace refresh
+- Implemented: navy/light/green visual identity, responsive navigation, upload/assistant shortcuts, truthful assistant mode label.
+- Pending: granular ingestion stage progress from API; browser visual verification of the refreshed UI.
