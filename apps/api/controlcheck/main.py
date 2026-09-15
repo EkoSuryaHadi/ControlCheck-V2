@@ -60,7 +60,13 @@ class Question(BaseModel):
 
 
 def create_app(db_path=None):
-    path = db_path or os.getenv('CONTROLCHECK_DB') or Path(__file__).resolve().parents[3] / 'data/local/controlcheck.db'
+    root = Path(__file__).resolve().parents[3]
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(root / '.env')
+    except ImportError:
+        pass
+    path = db_path or os.getenv('CONTROLCHECK_DB') or root / 'data/local/controlcheck.db'
     allowed_origins = [item.strip() for item in os.getenv(
         'CONTROLCHECK_ALLOWED_ORIGINS',
         'http://127.0.0.1:5173,http://localhost:5173',
@@ -115,7 +121,10 @@ def create_app(db_path=None):
 
     @app.get('/api/ai/models')
     def ai_models():
-        return dict(enabled=gateway.enabled, default_model=gateway.model, models=list(MODELS))
+        available = list(MODELS)
+        if gateway.model and gateway.model not in available:
+            available.insert(0, gateway.model)
+        return dict(enabled=gateway.enabled, default_model=gateway.model, models=available)
 
     @app.get('/api/fields')
     def fields():
@@ -243,7 +252,10 @@ def create_app(db_path=None):
     @app.post('/api/projects/{pid}/assistant')
     def ask(pid: str, body: Question):
         active = snapshot(pid)
-        if body.model and body.model not in MODELS:
+        allowed = set(MODELS)
+        if gateway.model:
+            allowed.add(gateway.model)
+        if body.model and body.model not in allowed:
             raise HTTPException(422, 'Model tidak didukung.')
         previous = app.state.repo.previous_snapshot(pid, active['id'])
         comparison = compare_snapshots(previous, active)

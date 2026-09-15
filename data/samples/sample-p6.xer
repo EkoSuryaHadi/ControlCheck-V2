@@ -1,0 +1,18 @@
+ERMHDR	15.2	2026-09-15	PROJECT	SAMPLE	ADMIN
+%T	PROJECT
+%F	proj_id	proj_short_name
+%R	1	SAMPLE_PROJ
+%T	TASK
+%F	task_id	proj_id	task_code	task_name	task_type	target_start_date	target_end_date	phys_complete_pct	target_cost	act_cost	critical_flag	total_float_hr_cnt
+%R	101	1	ACT-1010	Engineering & Design	TT_Task	2026-06-01 08:00	2026-07-15 17:00	100	150000000	140000000	N	160.0
+%R	102	1	ACT-1020	Procurement Long Lead	TT_Task	2026-07-01 08:00	2026-09-01 17:00	80	400000000	320000000	Y	0.0
+%R	103	1	ACT-1030	Civil Works & Foundation	TT_Task	2026-08-01 08:00	2026-09-08 17:00	50	200000000	110000000	Y	0.0
+%R	104	1	ACT-1040	Mechanical Erection	TT_Task	2026-09-05 08:00	2026-10-25 17:00	10	350000000	40000000	N	80.0
+%R	105	1	ACT-1050	Plant Commissioning	TT_FinMile	2026-11-15 17:00	2026-11-15 17:00	0	50000000	0	N	80.0
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	pred_type
+%R	1	102	101	PR_FS
+%R	2	103	102	PR_FS
+%R	3	104	103	PR_FS
+%R	4	105	104	PR_FS
+%E

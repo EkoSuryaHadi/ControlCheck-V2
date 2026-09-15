@@ -48,8 +48,11 @@ def _xer_tasks_tabular(content):
     except UnicodeDecodeError:
         try:
             text = content.decode('cp1252')
-        except UnicodeDecodeError as exc:
-            raise ValueError('Encoding XER tidak didukung.') from exc
+        except UnicodeDecodeError:
+            try:
+                text = content.decode('latin1')
+            except UnicodeDecodeError as exc:
+                raise ValueError('Encoding XER tidak didukung.') from exc
     tables = {}
     current = None
     headers = None
@@ -87,13 +90,15 @@ def _xer_tasks_tabular(content):
         task_type = _value(record.get('task_type')).upper()
         tasks.append({
             'uid': uid, 'activity_id': _value(record.get('task_code') or record.get('activity_id') or uid),
-            'name': name, 'planned_start': _date(record.get('target_start_date') or record.get('early_start_date')),
+            'name': name,
+            'summary': task_type in ('TT_WBS', 'WBS') or bool(record.get('summary')),
+            'planned_start': _date(record.get('target_start_date') or record.get('early_start_date')),
             'planned_finish': _date(record.get('target_end_date') or record.get('early_end_date')),
             'percent_complete': record.get('phys_complete_pct') or record.get('complete_pct'),
             'budget': record.get('target_cost') or record.get('budget'),
             'actual_cost': record.get('act_cost') or record.get('actual_cost'),
             'critical': _value(record.get('critical_flag')).upper() in ('Y', '1', 'TRUE'),
-            'milestone': task_type in ('TT_MILE', 'MILESTONE') or _value(record.get('milestone_flag')).upper() in ('Y', '1'),
+            'milestone': task_type in ('TT_MILE', 'MILESTONE', 'TT_FINMILE', 'TT_STARTMILE') or _value(record.get('milestone_flag')).upper() in ('Y', '1'),
             'total_slack': record.get('total_float_hr_cnt') or record.get('total_slack'),
             'predecessor_uids': predecessors.get(uid, []),
         })
@@ -154,13 +159,13 @@ def _xml_tasks(content):
 
 def _mpp_tasks(content):
     try:
-        import jpype
-        import mpxj  # noqa: F401 -- configures MPXJ jars on the JVM classpath
+        import jpype  # type: ignore
+        import mpxj  # type: ignore  # noqa: F401 -- configures MPXJ jars on the JVM classpath
         if not jpype.isJVMStarted():
             java_home = os.getenv('CONTROLCHECK_JAVA_HOME')
             jvm = os.path.join(java_home, 'bin', 'server', 'jvm.dll') if java_home else None
             jpype.startJVM(jvm, convertStrings=True)
-        from org.mpxj.reader import UniversalProjectReader
+        from org.mpxj.reader import UniversalProjectReader  # type: ignore
     except Exception as exc:
         raise ValueError('Parser MPP belum tersedia di server.') from exc
     path = None
@@ -191,47 +196,45 @@ def _mpp_tasks(content):
 
 def _xer_tasks(content):
     try:
-        import jpype
-        import mpxj  # noqa: F401 -- configures MPXJ jars on the JVM classpath
+        import jpype  # type: ignore
+        import mpxj  # type: ignore  # noqa: F401 -- configures MPXJ jars on the JVM classpath
         if not jpype.isJVMStarted():
             java_home = os.getenv('CONTROLCHECK_JAVA_HOME')
             jvm = os.path.join(java_home, 'bin', 'server', 'jvm.dll') if java_home else None
             jpype.startJVM(jvm, convertStrings=True)
-        from org.mpxj.primavera import PrimaveraXERFileReader
-    except Exception as exc:
-        raise ValueError('Parser XER belum tersedia di server. Pastikan Java 17 dan MPXJ tersedia.') from exc
-    path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix='.xer', delete=False) as stream:
-            stream.write(content)
-            path = stream.name
+        from org.mpxj.primavera import PrimaveraXERFileReader  # type: ignore
+        path = None
         try:
+            with tempfile.NamedTemporaryFile(suffix='.xer', delete=False) as stream:
+                stream.write(content)
+                path = stream.name
             project = PrimaveraXERFileReader().read(path)
             if project is None:
                 raise ValueError('MPXJ tidak menghasilkan project file.')
-        except Exception:
+            tasks = []
+            for task in project.getTasks():
+                calendar = task.getCalendar()
+                source_tasks = [_predecessor_task(relation) for relation in task.getPredecessors()]
+                tasks.append({
+                    'uid': task.getUniqueID(), 'activity_id': task.getActivityID(), 'name': task.getName(),
+                    'summary': bool(task.getSummary()), 'planned_start': task.getBaselineStart() or task.getStart(),
+                    'planned_finish': task.getBaselineFinish() or task.getFinish(),
+                    'baseline_start': task.getBaselineStart(), 'baseline_finish': task.getBaselineFinish(),
+                    'percent_complete': task.getPercentageComplete(), 'budget': task.getBaselineCost() or task.getCost(),
+                    'actual_cost': task.getActualCost(), 'critical': bool(task.getCritical()),
+                    'milestone': bool(task.getMilestone()), 'total_slack': task.getTotalSlack(),
+                    'calendar': calendar.getName() if calendar is not None else None,
+                    'constraint_type': task.getConstraintType(), 'constraint_date': task.getConstraintDate(),
+                    'predecessor_uids': [source.getUniqueID() for source in source_tasks if source is not None],
+                })
+            return tasks
+        finally:
+            _remove_temp_file(path)
+    except Exception:
+        try:
             return _xer_tasks_tabular(content)
-        tasks = []
-        for task in project.getTasks():
-            calendar = task.getCalendar()
-            source_tasks = [_predecessor_task(relation) for relation in task.getPredecessors()]
-            tasks.append({
-                'uid': task.getUniqueID(), 'activity_id': task.getActivityID(), 'name': task.getName(),
-                'summary': bool(task.getSummary()), 'planned_start': task.getBaselineStart() or task.getStart(),
-                'planned_finish': task.getBaselineFinish() or task.getFinish(),
-                'baseline_start': task.getBaselineStart(), 'baseline_finish': task.getBaselineFinish(),
-                'percent_complete': task.getPercentageComplete(), 'budget': task.getBaselineCost() or task.getCost(),
-                'actual_cost': task.getActualCost(), 'critical': bool(task.getCritical()),
-                'milestone': bool(task.getMilestone()), 'total_slack': task.getTotalSlack(),
-                'calendar': calendar.getName() if calendar is not None else None,
-                'constraint_type': task.getConstraintType(), 'constraint_date': task.getConstraintDate(),
-                'predecessor_uids': [source.getUniqueID() for source in source_tasks if source is not None],
-            })
-        return tasks
-    except Exception as exc:
-        raise ValueError('File Primavera P6 XER tidak dapat dibaca.') from exc
-    finally:
-        _remove_temp_file(path)
+        except Exception as exc:
+            raise ValueError(f'File Primavera P6 XER tidak dapat dibaca ({exc}). Pastikan file valid atau pasang Java 17 dan MPXJ.') from exc
 
 def read_project_file(filename, content):
     extension = Path(filename).suffix.lower()

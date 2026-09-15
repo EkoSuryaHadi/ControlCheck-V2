@@ -143,3 +143,24 @@ def test_xer_accepts_more_than_ten_thousand_activities(monkeypatch):
     })
     result = importers.read_source('large.xer', b'valid xer')
     assert len(result['rows']) == 10_001
+
+
+def test_read_project_file_xer_falls_back_to_tabular_without_java():
+    content = b'''%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\ttarget_start_date\ttarget_end_date\tphys_complete_pct\tcritical_flag\n%R\t1\tA-100\tFoundation\t2026-01-01 08:00\t2026-01-10 17:00\t40\tY\n%R\t2\tB-200\tStructure\t2026-01-11\t2026-01-20\t0\tN\n%T\tTASKPRED\n%F\ttask_id\tpred_task_id\n%R\t2\t1\n%E\n'''
+    result = project_files.read_project_file('schedule.xer', content)
+    assert result['sheet'] == 'Primavera P6'
+    assert result['rows'][0]['Activity ID'] == 'A-100'
+    assert result['rows'][1]['Predecessor IDs'] == 'A-100'
+
+
+def test_xer_tabular_recognizes_p6_milestone_and_wbs_types():
+    content = b'''%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\ttask_type\n%R\t1\tWBS-1\tPhase 1 Summary\tTT_WBS\n%R\t2\tM-100\tStart Milestone\tTT_StartMile\n%R\t3\tM-200\tFinish Milestone\tTT_FinMile\n%R\t4\tACT-1\tRegular Task\tTT_Task\n%E\n'''
+    tasks = project_files._xer_tasks_tabular(content)
+    assert tasks[0]['summary'] is True
+    assert tasks[1]['milestone'] is True
+    assert tasks[2]['milestone'] is True
+    assert tasks[3]['milestone'] is False
+    normalized = project_files.normalize_tasks(tasks)
+    # WBS summary must be excluded from leaf activity rows
+    assert [r['Activity ID'] for r in normalized['rows']] == ['M-100', 'M-200', 'ACT-1']
+
