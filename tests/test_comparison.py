@@ -19,6 +19,7 @@ def test_comparison_reports_measured_metric_and_activity_changes_only():
     previous = snapshot(1, '2026-09-08', [row('A', '2026-09-07', 50, 2), row('B', '2026-09-20', 0, 3)])
     current = snapshot(2, '2026-09-15', [row('A', '2026-09-07', 100, 2), row('C', '2026-09-10', 10, 4)])
     result = compare_snapshots(previous, current)
+    assert result is not None
 
     assert result['previous_snapshot']['version'] == 1
     assert result['current_snapshot']['version'] == 2

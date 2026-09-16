@@ -2,7 +2,7 @@
 import math
 import re
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, Any
 
 FIELDS = {
     'activity_id': ['activity id', 'id aktivitas', 'kode aktivitas', 'task id'],
@@ -89,7 +89,7 @@ def validate(raw_rows, mapping, source_id, sheet, options=None, dataset_type='co
     seen = set()
     for fallback_number, raw in enumerate(raw_rows, 2):
         number = int(raw.get('__source_row__', fallback_number))
-        item = {f: None for f in FIELDS}
+        item: dict[str, Any] = {f: None for f in FIELDS}
         for column, field in mapping.items():
             if not field:
                 continue

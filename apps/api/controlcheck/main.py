@@ -121,7 +121,7 @@ def create_app(db_path=None):
 
     @app.get('/api/ai/models')
     def ai_models():
-        available = list(MODELS)
+        available: list[str] = list(MODELS)
         if gateway.model and gateway.model not in available:
             available.insert(0, gateway.model)
         return dict(enabled=gateway.enabled, default_model=gateway.model, models=available)
@@ -252,7 +252,7 @@ def create_app(db_path=None):
     @app.post('/api/projects/{pid}/assistant')
     def ask(pid: str, body: Question):
         active = snapshot(pid)
-        allowed = set(MODELS)
+        allowed: set[str] = set(MODELS)
         if gateway.model:
             allowed.add(gateway.model)
         if body.model and body.model not in allowed:

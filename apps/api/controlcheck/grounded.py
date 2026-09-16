@@ -7,7 +7,7 @@ from .assistant import LocalAssistant
 from .semantic import FIELDS, suggest_mapping
 
 SUMOPOD_BASE_URL = os.getenv('SUMOPOD_BASE_URL', 'https://ai.sumopod.com/v1')
-MODELS = ('qwen3.7-flash-2026-07-15', 'qwen3.8-flash', 'gpt-5-mini', 'gpt-4o-mini', 'claude-haiku-4-5', 'kimi-k2', 'gemini/gemini-2.5-pro', 'gemini/gemini-2.0-flash')
+MODELS: tuple[str, ...] = ('qwen3.7-flash-2026-07-15', 'qwen3.8-flash', 'gpt-5-mini', 'gpt-4o-mini', 'claude-haiku-4-5', 'kimi-k2', 'gemini/gemini-2.5-pro', 'gemini/gemini-2.0-flash')
 
 
 class SumoPodGateway:

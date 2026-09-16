@@ -1,3 +1,4 @@
+from pathlib import Path
 from controlcheck.project_files import _xml_tasks, normalize_tasks
 
 
@@ -163,4 +164,34 @@ def test_xer_tabular_recognizes_p6_milestone_and_wbs_types():
     normalized = project_files.normalize_tasks(tasks)
     # WBS summary must be excluded from leaf activity rows
     assert [r['Activity ID'] for r in normalized['rows']] == ['M-100', 'M-200', 'ACT-1']
+
+
+def test_xer_tabular_extracts_calendar_and_constraints():
+    content = b'''%T\tCALENDAR\n%F\tclndr_id\tclndr_name\n%R\t10\t7-Day Construction\n%T\tTASK\n%F\ttask_id\ttask_code\ttask_name\tclndr_id\tcstr_type\tcstr_date\ttarget_start_date\ttarget_end_date\n%R\t1\tACT-01\tOffshore Pile\t10\tCS_MANDFIN\t2026-06-30 00:00\t2026-05-01 08:00\t2026-06-30 17:00\n%E\n'''
+    result = project_files.read_project_file('test.xer', content)
+    row = result['rows'][0]
+    assert row['Activity ID'] == 'ACT-01'
+    assert row['Calendar'] == '7-Day Construction'
+    assert row['Constraint Type'] == 'CS_MANDFIN'
+    assert row['Constraint Date'] == '2026-06-30'
+    assert row['Planned Start'] == '2026-05-01'
+    assert row['Baseline Finish'] == '2026-06-30'
+
+
+def test_xer_reads_real_sample_p6_file_directly():
+    sample_path = Path(__file__).parent.parent / 'data' / 'samples' / 'sample-p6.xer'
+    content = sample_path.read_bytes()
+    result = project_files.read_project_file('sample-p6.xer', content)
+    assert result['sheet'] == 'Primavera P6'
+    assert len(result['rows']) == 5
+    ids = [r['Activity ID'] for r in result['rows']]
+    assert ids == ['ACT-1010', 'ACT-1020', 'ACT-1030', 'ACT-1040', 'ACT-1050']
+    
+    # Check predecessor linking
+    act1020 = next(r for r in result['rows'] if r['Activity ID'] == 'ACT-1020')
+    assert act1020['Predecessor IDs'] == 'ACT-1010'
+    assert act1020['Is Critical'] == 'true'
+    assert act1020['Planned Start'] == '2026-07-01'
+    assert act1020['Budget'] == '400000000'
+
 

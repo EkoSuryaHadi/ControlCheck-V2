@@ -58,7 +58,10 @@ def test_invalid_publish_does_not_activate(client):
 
 def test_xlsx_selected_sheet_and_formula_rejection(client):
     pid = project(client)
-    book = Workbook(); book.active.title='Cover'; ws=book.create_sheet('Schedule')
+    book = Workbook()
+    assert book.active is not None
+    book.active.title = 'Cover'
+    ws = book.create_sheet('Schedule')
     ws.append(['Activity ID','Name']); ws.append(['A1','Work'])
     stream=io.BytesIO(); book.save(stream)
     route=f'/api/projects/{pid}/sources?sheet=Schedule'

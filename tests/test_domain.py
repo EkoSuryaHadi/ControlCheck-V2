@@ -65,7 +65,10 @@ def test_csv_header_row_and_source_provenance():
 def test_inspect_xlsx_lists_sheets_and_suggests_header():
     from io import BytesIO
     from openpyxl import Workbook
-    book = Workbook(); book.active.title = 'Cover'; ws = book.create_sheet('Schedule')
+    book = Workbook()
+    assert book.active is not None
+    book.active.title = 'Cover'
+    ws = book.create_sheet('Schedule')
     ws.append(['Weekly report']); ws.append([]); ws.append(['Activity ID', 'Name']); ws.append(['A1', 'Work'])
     stream = BytesIO(); book.save(stream)
     result = inspect_source('schedule.xlsx', stream.getvalue())
