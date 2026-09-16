@@ -78,7 +78,10 @@ def create_app(db_path=None):
             'CONTROLCHECK_ALLOWED_ORIGINS',
             'http://127.0.0.1:5173,http://localhost:5173',
         ).split(',') if item.strip()]
-        allowed_origin_regex = os.getenv('CONTROLCHECK_ALLOWED_ORIGIN_REGEX') or None
+        allowed_origin_regex = os.getenv(
+            'CONTROLCHECK_ALLOWED_ORIGIN_REGEX',
+            r'https://.*\.trycloudflare\.com|https://.*\.vercel\.app|https://.*\.onrender\.com',
+        ) or None
 
     @asynccontextmanager
     async def lifespan(app):
@@ -258,7 +261,25 @@ def create_app(db_path=None):
         s = app.state.repo.active_snapshot(pid)
         history = [dict(id=item['id'], version=item['version'], as_of=item['as_of'], filename=item['filename'], sheet=item['sheet']) for item in app.state.repo.snapshots(pid)]
         previous = app.state.repo.previous_snapshot(pid, s['id']) if s else None
-        return dict(project=p, snapshot=s, analysis=analyze(s['rows'],s['as_of']) if s else None,
+        analysis = analyze(s['rows'], s['as_of']) if s else None
+        if analysis:
+            analysis = dict(analysis)
+            if 'evidence' in analysis:
+                analysis['evidence'] = analysis['evidence'][:50]
+            if 'insights' in analysis:
+                trimmed_insights = []
+                for ins in analysis['insights']:
+                    ins_copy = dict(ins)
+                    if 'evidence' in ins_copy and len(ins_copy['evidence']) > 20:
+                        ins_copy['evidence'] = ins_copy['evidence'][:20]
+                    trimmed_insights.append(ins_copy)
+                analysis['insights'] = trimmed_insights
+        snapshot_view = None
+        if s:
+            snapshot_view = dict(s)
+            snapshot_view['total_rows'] = len(s['rows'])
+            snapshot_view['rows'] = s['rows'][:100]
+        return dict(project=p, snapshot=snapshot_view, analysis=analysis,
                     history=history, comparison=compare_snapshots(previous, s) if s else None,
                     forecast_readiness=readiness_for(pid, s) if s else None)
 
@@ -275,6 +296,10 @@ def create_app(db_path=None):
         forecast_readiness = readiness_for(pid, active)
         response = (assistant.answer(body.question, active, body.model, comparison, forecast_readiness) if assistant
                     else __import__('controlcheck.assistant', fromlist=['LocalAssistant']).LocalAssistant().answer(body.question, active, comparison, forecast_readiness))
+        if isinstance(response, dict) and 'evidence' in response and len(response['evidence']) > 20:
+            response = dict(response)
+            response['evidence'] = response['evidence'][:20]
+            response['evidence_truncated'] = True
         app.state.repo.save_conversation(pid, active['id'], body.question, response)
         return response
 
@@ -290,7 +315,18 @@ def create_app(db_path=None):
     @app.get('/api/projects/{pid}/conversations')
     def conversations(pid: str):
         project(pid)
-        return app.state.repo.conversations(pid)
+        items = app.state.repo.conversations(pid)
+        trimmed = []
+        for item in items:
+            item_copy = dict(item)
+            resp = item_copy.get('response')
+            if isinstance(resp, dict) and 'evidence' in resp and len(resp['evidence']) > 20:
+                resp_copy = dict(resp)
+                resp_copy['evidence'] = resp_copy['evidence'][:20]
+                resp_copy['evidence_truncated'] = True
+                item_copy['response'] = resp_copy
+            trimmed.append(item_copy)
+        return trimmed
 
     @app.get('/api/projects/{pid}/report', response_class=PlainTextResponse)
     def export_report(pid: str):
