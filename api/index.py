@@ -3,17 +3,16 @@ import os
 import sys
 from pathlib import Path
 
-# Traverse upward to find the repository root containing apps/api
-current = Path(__file__).resolve()
-repo_root = current.parent
-for parent in current.parents:
-    if (parent / "apps" / "api").is_dir():
-        repo_root = parent
-        break
+# Add current directory so bundled api/controlcheck is immediately available
+current_dir = Path(__file__).resolve().parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
-api_dir = repo_root / "apps" / "api"
-if str(api_dir) not in sys.path:
-    sys.path.insert(0, str(api_dir))
+# Also add apps/api if running from monorepo
+for parent in [current_dir] + list(current_dir.parents):
+    candidate = parent / "apps" / "api"
+    if candidate.is_dir() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
 
 from controlcheck.main import create_app  # noqa: E402
 

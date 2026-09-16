@@ -80,16 +80,13 @@ def create_app(db_path=None):
         ).split(',') if item.strip()]
         allowed_origin_regex = os.getenv('CONTROLCHECK_ALLOWED_ORIGIN_REGEX') or None
 
-    repo = Repository(path)
-
     @asynccontextmanager
     async def lifespan(app):
-        app.state.repo = repo
+        app.state.repo = Repository(path)
         yield
 
     app = FastAPI(title='ControlCheck AI 2.0', version='0.1.0', lifespan=lifespan,
                   description='Local development API. No authentication; bind only to loopback.')
-    app.state.repo = repo
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_origin_regex=allowed_origin_regex,
                        allow_methods=['GET','POST'], allow_headers=['Content-Type'])
 
