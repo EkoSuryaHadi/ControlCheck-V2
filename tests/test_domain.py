@@ -185,3 +185,18 @@ def test_recovery_priority_prefers_more_negative_total_slack():
     clean = validate(raw, mapping, 's', 'Schedule', dataset_type='schedule')['rows']
     priorities = analyze(clean, '2026-09-08')['recovery_priorities']
     assert [item['activity_id'] for item in priorities[:2]] == ['B', 'A']
+
+
+def test_importers_transparently_decompress_gzipped_content():
+    import gzip
+    raw_content = b'Activity ID,Name\nACT-1,First Activity\nACT-2,Second Activity\n'
+    gzipped_content = gzip.compress(raw_content)
+    
+    inspected = inspect_source('test.csv', gzipped_content)
+    assert inspected['sheets'][0]['name'] == 'CSV'
+    assert inspected['sheets'][0]['preview'][0] == ['Activity ID', 'Name']
+    
+    read = read_source('test.csv', gzipped_content)
+    assert len(read['rows']) == 2
+    assert read['rows'][0]['Activity ID'] == 'ACT-1'
+

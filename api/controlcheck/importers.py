@@ -107,6 +107,12 @@ def _suggest_header(matrix):
 
 
 def inspect_source(filename: str, content: bytes) -> dict:
+    if content and content[:2] == b'\x1f\x8b':
+        import gzip
+        try:
+            content = gzip.decompress(content)
+        except Exception:
+            pass
     _check_size(filename, content)
     extension = Path(filename).suffix.lower()
     if extension == '.csv':
@@ -131,6 +137,12 @@ def inspect_source(filename: str, content: bytes) -> dict:
 
 def read_source(filename: str, content: bytes, sheet: str | None = None, header_row: int = 1,
                 date_format: str = 'iso', decimal_separator: str = 'dot', percent_scale: str = 'points') -> dict:
+    if content and content[:2] == b'\x1f\x8b':
+        import gzip
+        try:
+            content = gzip.decompress(content)
+        except Exception:
+            pass
     _check_size(filename, content)
     extension = Path(filename).suffix.lower()
     sheet_name = 'CSV'

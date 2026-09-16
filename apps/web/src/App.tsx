@@ -115,11 +115,24 @@ function Workspace({project}: {project: Project}) {
     setBusy(label); setError(''); setNotice('');
     try { await action(); } catch(e) { setError(message(e)); } finally { setBusy(''); }
   }
+  async function compressFileIfNeeded(f: File): Promise<File> {
+    if (typeof CompressionStream !== 'undefined' && f.size > 2 * 1024 * 1024) {
+      try {
+        const stream = f.stream().pipeThrough(new CompressionStream('gzip'));
+        const blob = await new Response(stream).blob();
+        return new File([blob], f.name, { type: f.type || 'application/octet-stream' });
+      } catch {
+        return f;
+      }
+    }
+    return f;
+  }
   function selectSource(s: Source) { setSource(s); setMapping(Object.fromEntries(s.suggestions.map(m=>[m.column,m.field]))); setQuality(null); }
   async function inspectFile() {
     if (!file) return;
     await run('Membaca struktur file…',async()=>{
-      const form=new FormData(); form.append('file',file);
+      const uploadFile = await compressFileIfNeeded(file);
+      const form=new FormData(); form.append('file',uploadFile);
       const result=await api<SourceInspection>(base+'/sources/inspect',{method:'POST',body:form});
       const first=result.sheets[0]; setInspection(result); setSheet(first?.name || '');
       setHeaderRow(first?.suggested_header_row || 1); setNotice('Struktur file siap. Pilih sheet, baris header, dan format data.');
@@ -128,7 +141,8 @@ function Workspace({project}: {project: Project}) {
   async function upload(e: FormEvent) {
     e.preventDefault(); if (!file) return;
     await run('Mengunggah dan membaca data…',async()=>{
-      const form=new FormData(); form.append('file',file);
+      const uploadFile = await compressFileIfNeeded(file);
+      const form=new FormData(); form.append('file',uploadFile);
       const params=new URLSearchParams({header_row:String(headerRow),date_format:dateFormat,
         decimal_separator:decimalSeparator,percent_scale:percentScale,dataset_type:datasetType});
       if (sheet && inspection?.kind === 'xlsx') params.set('sheet',sheet);
