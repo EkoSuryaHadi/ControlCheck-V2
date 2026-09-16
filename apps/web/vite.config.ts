@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       strictPort: true,
+      allowedHosts: true,
       proxy: { '/api': env.CONTROLCHECK_API_URL || 'http://127.0.0.1:8000' },
     },
   };
