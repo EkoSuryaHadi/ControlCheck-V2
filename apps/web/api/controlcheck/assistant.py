@@ -36,12 +36,12 @@ class LocalAssistant:
                     dependency_step = (f"selesaikan atau koreksi predecessor {predecessors}"
                                        if predecessors else 'validasi bahwa aktivitas memang tidak memiliki predecessor')
                     items.append(
-                        f"{index + 1}. {item['activity_id']} — {item['name']} ({'; '.join(reasons)}). "
-                        f"Planner: perbarui status, remaining duration, dan relationship; {dependency_step}. "
-                        "Site Team: konfirmasi hambatan, resource, dan target produksi. "
-                        "Output review: PIC, recovery finish, dan target progress laporan berikutnya."
+                        f"{index + 1}. **{item['activity_id']} — {item['name']}** ({'; '.join(reasons)})\n"
+                        f"• **Planner:** perbarui status, remaining duration, dan relationship; {dependency_step}.\n"
+                        f"• **Site Team:** konfirmasi hambatan, resource, dan target produksi.\n"
+                        f"• **Output review:** PIC, recovery finish, dan target progress laporan berikutnya."
                     )
-                answer = 'Fokus pekerjaan berikutnya berdasarkan jaringan schedule: ' + ' '.join(items)
+                answer = 'Fokus pekerjaan berikutnya berdasarkan jaringan schedule:\n\n' + '\n\n'.join(items)
                 references = [item['citation'] for item in priorities]
         elif any(word in q for word in ('forecast', 'kesiapan data', 'siap untuk')):
             if not forecast_readiness:
