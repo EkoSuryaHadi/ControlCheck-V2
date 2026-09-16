@@ -66,12 +66,19 @@ def create_app(db_path=None):
         load_dotenv(root / '.env')
     except ImportError:
         pass
-    path = db_path or os.getenv('CONTROLCHECK_DB') or root / 'data/local/controlcheck.db'
-    allowed_origins = [item.strip() for item in os.getenv(
-        'CONTROLCHECK_ALLOWED_ORIGINS',
-        'http://127.0.0.1:5173,http://localhost:5173',
-    ).split(',') if item.strip()]
-    allowed_origin_regex = os.getenv('CONTROLCHECK_ALLOWED_ORIGIN_REGEX') or None
+    is_vercel = bool(os.getenv('VERCEL'))
+    path = db_path or os.getenv('CONTROLCHECK_DB') or (
+        Path('/tmp/controlcheck.db') if is_vercel else root / 'data/local/controlcheck.db'
+    )
+    if is_vercel:
+        allowed_origins = ['*']
+        allowed_origin_regex = None
+    else:
+        allowed_origins = [item.strip() for item in os.getenv(
+            'CONTROLCHECK_ALLOWED_ORIGINS',
+            'http://127.0.0.1:5173,http://localhost:5173',
+        ).split(',') if item.strip()]
+        allowed_origin_regex = os.getenv('CONTROLCHECK_ALLOWED_ORIGIN_REGEX') or None
 
     @asynccontextmanager
     async def lifespan(app):
@@ -82,6 +89,12 @@ def create_app(db_path=None):
                   description='Local development API. No authentication; bind only to loopback.')
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_origin_regex=allowed_origin_regex,
                        allow_methods=['GET','POST'], allow_headers=['Content-Type'])
+
+    @app.middleware('http')
+    async def normalize_api_path(request, call_next):
+        if not request.scope.get('path', '').startswith('/api'):
+            request.scope['path'] = '/api' + request.scope.get('path', '')
+        return await call_next(request)
     gateway = SumoPodGateway()
     mapper = SumoPodMappingProvider(gateway) if gateway.enabled else LocalMappingProvider()
     assistant = GroundedAssistant(gateway) if gateway.enabled else None
