@@ -173,6 +173,8 @@ function Workspace({project}: {project: Project}) {
   const [report,setReport] = useState('');
   const [aiModels,setAiModels] = useState<AiModels|null>(null);
   const [model,setModel] = useState('');
+  const [activityPage,setActivityPage] = useState(1);
+  const [activitySearch,setActivitySearch] = useState('');
   const base = '/projects/'+project.id;
   async function refresh() {
     const [o,s] = await Promise.all([api<Overview>(base+'/overview'),api<Source[]>(base+'/sources')]);
@@ -181,6 +183,7 @@ function Workspace({project}: {project: Project}) {
   useEffect(() => { let alive=true; Promise.all([api<Overview>(base+'/overview'),api<Source[]>(base+'/sources')]).then(([o,s])=>{if(alive){setOverview(o);setSources(s);}}).catch(e=>{if(alive)setError(message(e));}).finally(()=>{if(alive)setLoading(false);}); return()=>{alive=false;}; }, [base]);
   useEffect(() => { api<AiModels>('/ai/models').then(value=>{setAiModels(value);setModel(value.default_model)}).catch(()=>{}); }, []);
   useEffect(() => { api<Conversation[]>(base+'/conversations').then(items=>setAnswers(items.map(item=>({question:item.question,response:item.response})))).catch(()=>{}); }, [base]);
+  useEffect(() => { setActivityPage(1); }, [overview?.snapshot?.id]);
   async function run(label: string, action: ()=>Promise<void>) {
     setBusy(label); setError(''); setNotice('');
     try { await action(); } catch(e) { setError(message(e)); } finally { setBusy(''); }
@@ -253,6 +256,17 @@ function Workspace({project}: {project: Project}) {
   }); }
   function downloadReport() { const url=URL.createObjectURL(new Blob([report],{type:'text/markdown;charset=utf-8'})); const link=document.createElement('a');link.href=url;link.download='controlcheck-report.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
   const snapshot=overview?.snapshot, analysis=overview?.analysis, metrics=analysis?.metrics, comparison=overview?.comparison, forecastReadiness=overview?.forecast_readiness;
+  const filteredActivities = (snapshot?.rows || []).filter(r => {
+    if (!activitySearch.trim()) return true;
+    const query = activitySearch.toLowerCase();
+    return r.activity_id.toLowerCase().includes(query) || r.name.toLowerCase().includes(query);
+  });
+  const activityPageSize = 10;
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / activityPageSize));
+  const currentActivityPage = Math.min(Math.max(1, activityPage), totalActivityPages);
+  const pagedActivities = filteredActivities.slice((currentActivityPage - 1) * activityPageSize, currentActivityPage * activityPageSize);
+  const activityStartIdx = filteredActivities.length === 0 ? 0 : (currentActivityPage - 1) * activityPageSize + 1;
+  const activityEndIdx = Math.min(currentActivityPage * activityPageSize, filteredActivities.length);
   const selectedSheet=inspection?.sheets.find(item=>item.name===sheet);
   const empty=<section className="empty-state"><span className="step-number">01 / DATA FIRST</span><h2>Mulai dari data.<br/>Temukan langkah berikutnya.</h2><p>Upload schedule, progress, dan biaya dalam satu snapshot Excel atau CSV. Setiap jawaban akan memiliki sumber yang bisa ditelusuri.</p><button onClick={()=>setTab('Data Center')}>Upload data pertama →</button><div className="journey"><span>Upload</span><b>→</b><span>Tinjau mapping</span><b>→</b><span>Validasi</span><b>→</b><span>Insight</span></div></section>;
   return <div className="workspace"><aside><p className="eyebrow">PROJECT WORKSPACE</p><nav aria-label="Navigasi proyek">{tabs.map((name,i)=><button key={name} className={tab===name?'active':''} aria-current={tab===name?'page':undefined} onClick={()=>{setTab(name);setError('');}}><span className="nav-number">0{i+1}</span>{tabLabels[name]}{name==='Insights' && !!analysis?.insights.length && <em>{analysis.insights.length}</em>}</button>)}</nav><div className="sidebar-note"><span className="tag">{aiModels?.enabled ? 'GROUNDED AI' : 'ANALITIK LOKAL'}</span><p>Setiap keputusan dimulai dari data.</p><small>Jawaban merujuk snapshot dan sumber proyek.</small></div></aside>
@@ -267,7 +281,81 @@ function Workspace({project}: {project: Project}) {
         {comparison && <ComparisonCard comparison={comparison}/>}
         {forecastReadiness && <ForecastReadinessCard readiness={forecastReadiness}/>}
         <section className="budget-strip"><h2>Ringkasan biaya <small>{project.currency}</small></h2><dl><div><dt>Budget at completion</dt><dd>{number(metrics.bac)}</dd></div><div><dt>Planned value</dt><dd>{number(metrics.pv)}</dd></div><div><dt>Earned value</dt><dd>{number(metrics.ev)}</dd></div><div><dt>Actual cost</dt><dd>{number(metrics.ac)}</dd></div></dl></section>
-        <section><div className="section-title"><h2>Daftar aktivitas</h2><span>{snapshot.total_rows ?? snapshot.rows.length} aktivitas</span></div><div className="table-wrap"><table><thead><tr><th>ID</th><th>Aktivitas</th><th>Rencana selesai</th><th>Aktual</th><th>Sumber</th></tr></thead><tbody>{snapshot.rows.slice(0,100).map(r=><tr key={r.activity_id}><td>{r.activity_id}</td><td>{r.name}</td><td>{r.planned_finish || '—'}</td><td>{number(r.actual_progress)}{r.actual_progress != null ? '%' : ''}</td><td>{r.evidence.sheet}:{r.evidence.row}</td></tr>)}</tbody></table></div>{(snapshot.total_rows ?? snapshot.rows.length)>100 && <p className="hint">Menampilkan {snapshot.rows.length} dari {snapshot.total_rows ?? snapshot.rows.length} aktivitas. Perhitungan menggunakan seluruh snapshot.</p>}</section><details className="limitations"><summary>Cakupan dan keterbatasan analisis</summary>{analysis?.limitations.map(l=><p key={l}>{l}</p>)}<EvidenceList evidence={analysis?.evidence || []}/></details>
+        <section>
+          <div className="section-title">
+            <h2>Daftar aktivitas</h2>
+            <div style={{display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+              <input
+                type="search"
+                placeholder="Cari ID / aktivitas…"
+                value={activitySearch}
+                onChange={e=>{setActivitySearch(e.target.value);setActivityPage(1);}}
+                style={{padding:'6px 12px',fontSize:'12px',width:'190px',borderRadius:'4px'}}
+              />
+              <span>{snapshot.total_rows ?? snapshot.rows.length} aktivitas</span>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Aktivitas</th><th>Rencana selesai</th><th>Aktual</th><th>Sumber</th></tr>
+              </thead>
+              <tbody>
+                {pagedActivities.length > 0 ? pagedActivities.map(r => (
+                  <tr key={r.activity_id}>
+                    <td>{r.activity_id}</td>
+                    <td>{r.name}</td>
+                    <td>{r.planned_finish || '—'}</td>
+                    <td>{number(r.actual_progress)}{r.actual_progress != null ? '%' : ''}</td>
+                    <td>{r.evidence.sheet}:{r.evidence.row}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={5} style={{textAlign:'center',padding:'24px',color:'var(--muted)'}}>
+                      {activitySearch.trim() ? 'Tidak ada aktivitas yang cocok dengan pencarian.' : 'Tidak ada aktivitas.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="activity-pagination" style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'14px',flexWrap:'wrap',gap:'12px'}}>
+            <span className="hint" style={{margin:0}}>
+              Menampilkan baris {activityStartIdx}–{activityEndIdx} dari {filteredActivities.length} aktivitas
+              {activitySearch.trim() ? ` (difilter dari ${snapshot.rows.length} baris yang dimuat)` : ((snapshot.total_rows && snapshot.total_rows > snapshot.rows.length) ? ` (${snapshot.rows.length} baris dimuat dari total ${snapshot.total_rows})` : '')}
+            </span>
+            {totalActivityPages > 1 && (
+              <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{padding:'6px 14px',fontSize:'12px'}}
+                  disabled={currentActivityPage <= 1}
+                  onClick={()=>setActivityPage(p=>Math.max(1,p-1))}
+                >
+                  ← Sebelumnya
+                </button>
+                <span style={{fontSize:'12px',fontWeight:600,color:'var(--muted)'}}>
+                  Halaman {currentActivityPage} dari {totalActivityPages}
+                </span>
+                <button
+                  type="button"
+                  className="secondary"
+                  style={{padding:'6px 14px',fontSize:'12px'}}
+                  disabled={currentActivityPage >= totalActivityPages}
+                  onClick={()=>setActivityPage(p=>Math.min(totalActivityPages,p+1))}
+                >
+                  Berikutnya →
+                </button>
+              </div>
+            )}
+          </div>
+          {(snapshot.total_rows ?? snapshot.rows.length) > snapshot.rows.length && !activitySearch.trim() && (
+            <p className="hint" style={{marginTop:'8px'}}>
+              Menampilkan {snapshot.rows.length} dari {snapshot.total_rows ?? snapshot.rows.length} aktivitas pada pratinjau tabel. Perhitungan analitik & insight menggunakan seluruh data snapshot.
+            </p>
+          )}
+        </section><details className="limitations"><summary>Cakupan dan keterbatasan analisis</summary>{analysis?.limitations.map(l=><p key={l}>{l}</p>)}<EvidenceList evidence={analysis?.evidence || []}/></details>
       </>)}
       {tab==='Data Center' && <>
         <p className="lead">Upload file proyek, lalu biarkan agent menyusun konteks dan snapshot untuk Anda.</p><section className="upload-area agent-upload"><div><span className="step-number">INGESTION AGENT</span><h2>Upload jadwal Anda.<br/>Biarkan agent membacanya.</h2><p>CSV, Excel, Microsoft Project MPP/XML, atau Primavera P6 XER. Schedule saja juga dapat langsung diproses.</p></div><form className="upload-controls" onSubmit={ingestAutomatically}><label>Tanggal laporan<input type="date" value={reportingDate} onChange={e=>setReportingDate(e.target.value)} required disabled={!!busy}/></label><label>File proyek<input type="file" accept=".csv,.xlsx,.mpp,.xml,.xer" multiple required onChange={e=>{setAgentFiles(Array.from(e.target.files || []));setIngestion(null)}} disabled={!!busy}/></label><p className="hint">{agentFiles.length ? agentFiles.map(file=>file.name).join(' · ') : 'Pilih satu atau beberapa file.'}</p><button disabled={!!busy || !agentFiles.length}>Analisis project data →</button><small>CSV/XLSX maks. 5 MB dan 10.000 baris · MPP/XER maks. 50 MB dan 25.000 aktivitas. MPP/XER memerlukan Java 17.</small></form></section>{ingestion && <section className="quality ingestion-receipt"><span className={'tag '+(ingestion.status==='published'?'low':'high')}>{ingestion.status==='published'?'SNAPSHOT SIAP':'PERLU TINJAUAN'}</span><h3>{ingestion.summary}</h3><p>{ingestion.coverage.schedule} aktivitas Schedule · {ingestion.coverage.progress_matched} Progress cocok · {ingestion.coverage.cost_matched} Cost cocok</p><details><summary>Keputusan agent</summary>{ingestion.decisions.map((item,i)=><p key={i}>{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}</details>{ingestion.issues.map((item,i)=><p key={i} className="quality-error">{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}<div className="button-row">{ingestion.status==='published' ? <button onClick={()=>setTab('Overview')}>Buka project overview →</button> : <button className="secondary" onClick={()=>setNotice('Pilih sumber di bawah untuk meninjau dan memperbaiki data.')}>Review data ↓</button>}</div></section>}<details className="advanced-review"><summary>Tinjau data secara manual</summary><p className="hint">Gunakan bila ingin memilih sheet, header, format angka, mapping, atau publikasi secara manual.</p><form className="upload-area" onSubmit={upload}><div><span className="step-number">01 / INSPEKSI SOURCE</span><h2>Excel atau CSV,<br/>siap untuk dipahami.</h2><p>Periksa struktur file, lalu tentukan cara membaca tanggal, angka, dan persentase.</p>{selectedSheet && <div className="matrix-preview"><strong>Preview · {selectedSheet.name}</strong>{selectedSheet.preview.map((row,i)=><div key={i} className={i+1===headerRow?'chosen-header':''}><span>{i+1}</span><code>{row.map(value=>value || '—').join('  |  ')}</code></div>)}</div>}</div><div className="upload-controls"><label>Jenis data<select value={datasetType} onChange={e=>setDatasetType(e.target.value as DatasetType)} disabled={!!busy}><option value="schedule">Schedule (utama)</option><option value="progress">Progress</option><option value="cost">Cost</option><option value="combined">Snapshot gabungan</option></select></label><label>File data<input type="file" accept=".csv,.xlsx" required onChange={e=>{setFile(e.target.files?.[0] || null);setInspection(null);setSource(null);setQuality(null);}} disabled={!!busy}/></label><button type="button" className="secondary" disabled={!file || !!busy} onClick={()=>void inspectFile()}>Periksa struktur file</button>{inspection && <><label>Sheet<select value={sheet} onChange={e=>{const value=e.target.value;setSheet(value);const next=inspection.sheets.find(item=>item.name===value);setHeaderRow(next?.suggested_header_row || 1);}} disabled={!!busy}>{inspection.sheets.map(item=><option key={item.name}>{item.name}</option>)}</select></label><label>Baris header<input type="number" min="1" max="50" value={headerRow} onChange={e=>setHeaderRow(Number(e.target.value))} disabled={!!busy}/></label><div className="form-row"><label>Format tanggal<select value={dateFormat} onChange={e=>setDateFormat(e.target.value)}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label><label>Desimal<select value={decimalSeparator} onChange={e=>setDecimalSeparator(e.target.value)}><option value="dot">Titik (1000.50)</option><option value="comma">Koma (1000,50)</option></select></label></div><label>Skala progress<select value={percentScale} onChange={e=>setPercentScale(e.target.value)}><option value="points">Persen 0–100</option><option value="fraction">Pecahan 0–1</option></select></label><button disabled={!!busy}>Baca data dengan aturan ini →</button></>}<small>5 MB · 10.000 baris · CSV UTF-8 / XLSX</small></div></form></details>
