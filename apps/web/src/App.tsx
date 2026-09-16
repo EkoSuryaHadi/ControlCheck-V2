@@ -116,7 +116,7 @@ function Workspace({project}: {project: Project}) {
     try { await action(); } catch(e) { setError(message(e)); } finally { setBusy(''); }
   }
   async function compressFileIfNeeded(f: File): Promise<File> {
-    if (typeof CompressionStream !== 'undefined' && f.size > 2 * 1024 * 1024) {
+    if (typeof CompressionStream !== 'undefined' && f.size > 1.5 * 1024 * 1024) {
       try {
         const stream = f.stream().pipeThrough(new CompressionStream('gzip'));
         const blob = await new Response(stream).blob();
@@ -132,7 +132,7 @@ function Workspace({project}: {project: Project}) {
     if (!file) return;
     await run('Membaca struktur file…',async()=>{
       const uploadFile = await compressFileIfNeeded(file);
-      const form=new FormData(); form.append('file',uploadFile);
+      const form=new FormData(); form.append('file',uploadFile, file.name);
       const result=await api<SourceInspection>(base+'/sources/inspect',{method:'POST',body:form});
       const first=result.sheets[0]; setInspection(result); setSheet(first?.name || '');
       setHeaderRow(first?.suggested_header_row || 1); setNotice('Struktur file siap. Pilih sheet, baris header, dan format data.');
@@ -142,7 +142,7 @@ function Workspace({project}: {project: Project}) {
     e.preventDefault(); if (!file) return;
     await run('Mengunggah dan membaca data…',async()=>{
       const uploadFile = await compressFileIfNeeded(file);
-      const form=new FormData(); form.append('file',uploadFile);
+      const form=new FormData(); form.append('file',uploadFile, file.name);
       const params=new URLSearchParams({header_row:String(headerRow),date_format:dateFormat,
         decimal_separator:decimalSeparator,percent_scale:percentScale,dataset_type:datasetType});
       if (sheet && inspection?.kind === 'xlsx') params.set('sheet',sheet);
@@ -165,9 +165,14 @@ function Workspace({project}: {project: Project}) {
     setNotice('Snapshot gabungan dipublikasikan. Overview dan assistant memakai versi data ini.');
   }); }
   async function ingestAutomatically(e: FormEvent) { e.preventDefault(); if (!agentFiles.length) return; await run('Agent membaca dan memeriksa data proyek…',async()=>{
-    const form = new FormData(); agentFiles.forEach(file => form.append('files', file));
+    const form = new FormData();
+    for (const f of agentFiles) {
+      const uploadFile = await compressFileIfNeeded(f);
+      form.append('files', uploadFile, f.name);
+    }
     const receipt = await api<IngestionReceipt>(base+'/ingestions?as_of='+encodeURIComponent(reportingDate), {method:'POST', body:form});
     setIngestion(receipt); await refresh(); setAnswers([]); setReport('');
+
     if (receipt.status === 'published') setNotice('Agent selesai. Snapshot proyek sudah aktif.');
   }); }
   async function ask(q=question) { if (!q.trim()) return; await run('Menganalisis snapshot…',async()=>{
