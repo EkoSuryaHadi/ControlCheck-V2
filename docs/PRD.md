@@ -9,8 +9,8 @@ ControlCheck becomes an AI Project Control Assistant / Project Intelligence Assi
 
 ## Jobs and journey
 1. Create a project with currency and baseline reporting date; choose a reporting date for each later publication.
-2. Inspect Excel (.xlsx) or UTF-8 CSV, then confirm worksheet, header row and numeric/date conventions before import.
-3. Review suggested source-to-semantic column mapping. Never publish an AI suggestion automatically.
+2. Inspect or upload Excel (.xlsx), CSV, MS Project (.mpp/.xml), or Primavera P6 (.xer). Raw binary is preserved in object storage with SHA-256 integrity verification.
+3. Ingestion Agent queues processing asynchronously, tracks progress stages (storing raw, parsing, validating, reconciling, publishing), and reviews suggested source-to-semantic column mapping. Never publish an AI suggestion automatically.
 4. Inspect row-level quality findings; correct the source and re-upload if blocking errors exist.
 5. Publish a validated snapshot, then inspect schedule, progress and cost measures.
 6. Ask the assistant a question and receive supported facts with file, worksheet and row citations.
@@ -20,12 +20,13 @@ ControlCheck becomes an AI Project Control Assistant / Project Intelligence Assi
 | Capability | Acceptance target for full MVP | Scaffold coverage |
 |---|---|---|
 | Project workspace | Project-specific source data, configuration and conversation history | Create/select projects; persisted data and settings; conversation is session-only |
-| Upload | CSV/XLSX, clear constraints, sheet/header choice, explicit locale conversion, immutable source identity | File inspection, XLSX sheet list, header suggestion/override, date/decimal/percent settings, CSV/XLSX 5 MB / 10,000 rows; MPP/XER 50 MB / 25,000 activities; 100 columns, SHA-256 source identity |
+| Upload & Storage | CSV/XLSX/MPP/XML/XER, clear constraints, sheet/header choice, explicit locale conversion, immutable source identity, original raw binary retention in object storage | File inspection, XLSX sheet list, header suggestion/override, date/decimal/percent settings, CSV/XLSX 5 MB / 10,000 rows; MPP/XER 50 MB / 25,000 activities; 100 columns, SHA-256 source integrity, raw file storage abstraction (local disk / S3-MinIO) with download capability |
+| Ingestion Queue & Job State | Non-blocking background worker for large workbooks and schedule files, granular stage tracking, job persistence | Persistent job state in database, asynchronous background ingestion worker, granular stages (storing, parsing, validating, reconciling, publishing), polling status API |
 | AI schema mapping | Model suggestions, confidence, rationale, manual confirmation and review | Deterministic bilingual suggestions and editable confirmation; provider protocol for future LLM |
 | Quality engine | Required fields, typing, duplicates, ranges and business consistency | Row/field errors block publication; warnings surface incomplete optional facts |
 | Semantic model | Versioned schedule/progress/cost snapshots with provenance | Activity-grain snapshot, project scope, monetary currency at project level, row provenance |
 | Assistant | Answers grounded in approved project tools, citations, abstention | Read-only local assistant plus optional SumoPod grounded narration with validated citations |
-| Analytics | Schedule variance, weighted progress, EVM with valid denominators | Overdue count, weighted progress, PV/EV/AC/BAC, SPI/CPI, SV/CV when all required facts exist; deterministic Forecast Readiness gate |
+| Analytics | Schedule variance, weighted progress, EVM with valid denominators, time-phased deterministic S-Curve (planned vs actual progress distribution), standard EVM cost/performance forecasting (EAC_CPI, EAC_composite, VAC, TCPI) with documented assumptions, and multi-period historical trend across all published snapshots | Overdue count, weighted progress, PV/EV/AC/BAC, SPI/CPI, SV/CV when all required facts exist; deterministic Forecast Readiness gate; weekly time-phased S-Curve; deterministic EVM forecasts; multi-period snapshot trend |
 | Insights | Severity, evidence, explanation and suggested response | Rules for overdue work, SPI and CPI; no automatic changes |
 | Reports | Reviewable dated executive report, evidence and caveats | Markdown download from the same published snapshot |
 
@@ -41,4 +42,4 @@ Uploaded text is untrusted evidence, never instructions. All numerical answers c
 Measure time from upload to first validated insight, mapping corrections per file, percentage of answers with valid citations, quality failures resolved, report generation time and unsupported-claim rate. Targets: all numerical claims have evidence; no critical cross-project leakage; a 1,000-row template completes the journey without manual database edits. Latency targets are set after representative pilot benchmarks, not claimed by the scaffold.
 
 ## Not in this increment
-dependency-network scheduling, critical path, forecasting, probabilistic completion dates, resource leveling, autonomous actions, notifications, portfolio rollups, OCR/PDF extraction, SaaS billing and production deployment.
+dependency-network scheduling, critical path, probabilistic completion dates (Monte Carlo), resource leveling, autonomous actions, notifications, portfolio rollups, OCR/PDF extraction, SaaS billing and production deployment.

@@ -2,6 +2,7 @@
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -26,6 +27,11 @@ class Repository:
                 CREATE TABLE IF NOT EXISTS conversations (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
                     snapshot_id TEXT NOT NULL REFERENCES snapshots(id), payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
+                    job_type TEXT NOT NULL, status TEXT NOT NULL, stage TEXT NOT NULL,
+                    progress_percent INTEGER NOT NULL, error_message TEXT,
+                    result_payload TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
             ''')
 
     @contextmanager
@@ -143,3 +149,69 @@ class Repository:
                         canonical_mapping, json.dumps(snapshot)))
             db.execute('UPDATE projects SET active_snapshot=? WHERE id=?', (snapshot['id'], project['id']))
             return snapshot
+
+    def create_job(self, project_id: str, job_type: str = 'ingest_sources') -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+        job_id = str(uuid4())
+        record = dict(
+            id=job_id,
+            project_id=project_id,
+            job_type=job_type,
+            status='queued',
+            stage='queued',
+            progress_percent=0,
+            error_message=None,
+            result_payload=None,
+            created_at=now,
+            updated_at=now,
+        )
+        with self.connection() as db:
+            db.execute(
+                '''INSERT INTO jobs (id, project_id, job_type, status, stage, progress_percent,
+                   error_message, result_payload, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                (job_id, project_id, job_type, 'queued', 'queued', 0, None, None, now, now)
+            )
+        return record
+
+    def update_job(self, job_id: str, status: str, stage: str, progress_percent: int,
+                   error_message: str | None = None, result_payload: dict | None = None) -> dict | None:
+        now = datetime.now(timezone.utc).isoformat()
+        res_json = json.dumps(result_payload) if result_payload is not None else None
+        with self.connection() as db:
+            db.execute(
+                '''UPDATE jobs SET status=?, stage=?, progress_percent=?,
+                   error_message=COALESCE(?, error_message),
+                   result_payload=COALESCE(?, result_payload),
+                   updated_at=? WHERE id=?''',
+                (status, stage, progress_percent, error_message, res_json, now, job_id)
+            )
+            row = db.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            if data.get('result_payload'):
+                data['result_payload'] = json.loads(data['result_payload'])
+            return data
+
+    def job(self, project_id: str, job_id: str) -> dict | None:
+        with self.connection() as db:
+            row = db.execute('SELECT * FROM jobs WHERE id=? AND project_id=?', (job_id, project_id)).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            if data.get('result_payload'):
+                data['result_payload'] = json.loads(data['result_payload'])
+            return data
+
+    def jobs(self, project_id: str) -> list[dict]:
+        with self.connection() as db:
+            rows = db.execute('SELECT * FROM jobs WHERE project_id=? ORDER BY created_at DESC', (project_id,)).fetchall()
+            results = []
+            for r in rows:
+                item = dict(r)
+                if item.get('result_payload'):
+                    item['result_payload'] = json.loads(item['result_payload'])
+                results.append(item)
+            return results
+

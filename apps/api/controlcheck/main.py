@@ -1,8 +1,9 @@
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -17,6 +18,8 @@ from .assistant import report
 from .grounded import GroundedAssistant, MODELS, SumoPodGateway, SumoPodMappingProvider
 from .reconciliation import reconcile
 from .ingestion import run_ingestion
+from .storage import get_storage_provider, StorageProvider
+from .queue import JobQueue
 
 
 class NewProject(BaseModel):
@@ -59,7 +62,7 @@ class Question(BaseModel):
         return value.strip()
 
 
-def create_app(db_path=None):
+def create_app(db_path=None, storage_provider=None):
     root = Path(__file__).resolve().parents[3]
     try:
         from dotenv import load_dotenv
@@ -69,6 +72,9 @@ def create_app(db_path=None):
     is_vercel = bool(os.getenv('VERCEL'))
     path = db_path or os.getenv('CONTROLCHECK_DB') or (
         Path('/tmp/controlcheck.db') if is_vercel else root / 'data/local/controlcheck.db'
+    )
+    storage = storage_provider or get_storage_provider(
+        base_dir=Path('/tmp/storage') if is_vercel else root / 'data/storage'
     )
     if is_vercel:
         allowed_origins = ['*']
@@ -84,15 +90,27 @@ def create_app(db_path=None):
         ) or None
 
     repo = Repository(path)
+    gateway = SumoPodGateway()
+    mapper = SumoPodMappingProvider(gateway) if gateway.enabled else LocalMappingProvider()
+    assistant = GroundedAssistant(gateway) if gateway.enabled else None
+    queue = JobQueue(repo, storage, mapper)
 
     @asynccontextmanager
     async def lifespan(app):
         app.state.repo = repo
-        yield
+        app.state.storage = storage
+        app.state.queue = queue
+        await queue.start()
+        try:
+            yield
+        finally:
+            await queue.stop()
 
     app = FastAPI(title='ControlCheck AI 2.0', version='0.1.0', lifespan=lifespan,
                   description='Local development API. No authentication; bind only to loopback.')
     app.state.repo = repo
+    app.state.storage = storage
+    app.state.queue = queue
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_origin_regex=allowed_origin_regex,
                        allow_methods=['GET','POST'], allow_headers=['Content-Type'])
 
@@ -184,13 +202,43 @@ def create_app(db_path=None):
             for file in files:
                 filename = file.filename or ''
                 uploads.append((filename, await file.read(max_upload_bytes(filename) + 1)))
-            result = run_ingestion(current_project, uploads, app.state.repo, mapper)
+            result = run_ingestion(current_project, uploads, app.state.repo, mapper, storage_provider=app.state.storage)
             if result['status'] == 'needs_attention':
                 response.status_code = 200
             return result
         finally:
             for file in files:
                 await file.close()
+
+    @app.post('/api/projects/{pid}/ingestions/async', status_code=202)
+    async def ingest_sources_async(pid: str, as_of: date | None = None, files: list[UploadFile] = File(...)):
+        current_project = project(pid)
+        if as_of:
+            current_project = {**current_project, 'as_of': as_of.isoformat()}
+        uploads = []
+        try:
+            for file in files:
+                filename = file.filename or ''
+                uploads.append((filename, await file.read(max_upload_bytes(filename) + 1)))
+            job_record = app.state.repo.create_job(pid, job_type='ingest_sources')
+            await app.state.queue.enqueue_ingestion(current_project, job_record['id'], uploads)
+            return job_record
+        finally:
+            for file in files:
+                await file.close()
+
+    @app.get('/api/projects/{pid}/jobs/{job_id}')
+    def get_job(pid: str, job_id: str):
+        project(pid)
+        record = app.state.repo.job(pid, job_id)
+        if not record:
+            raise HTTPException(404, 'Tugas antrean tidak ditemukan.')
+        return record
+
+    @app.get('/api/projects/{pid}/jobs')
+    def list_jobs(pid: str):
+        project(pid)
+        return app.state.repo.jobs(pid)
 
     @app.post('/api/projects/{pid}/sources', status_code=201)
     def upload_source(pid: str, file: UploadFile = File(...), sheet: str | None = None,
@@ -202,14 +250,36 @@ def create_app(db_path=None):
         try:
             filename = file.filename or ''
             content = file.file.read(max_upload_bytes(filename) + 1)
+            stored = app.state.storage.put(pid, filename, content)
             table = read_source(filename, content, sheet, header_row, date_format,
                                 decimal_separator, percent_scale)
             table['dataset_type'] = dataset_type
+            table['storage_key'] = stored['storage_key']
+            table['size_bytes'] = stored['size_bytes']
+            table['storage_type'] = stored['storage_type']
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         finally:
             file.file.close()
         return public_source(app.state.repo.add_source(pid,table))
+
+    @app.get('/api/projects/{pid}/sources/{sid}/download')
+    def download_source(pid: str, sid: str):
+        s = source(pid, sid)
+        storage_key = s.get('storage_key')
+        if not storage_key:
+            raise HTTPException(404, 'File mentah tidak tersimpan untuk sumber ini.')
+        try:
+            content = app.state.storage.get(storage_key)
+        except FileNotFoundError:
+            raise HTTPException(404, 'File mentah tidak ditemukan di object storage.')
+        filename = s.get('filename') or 'source.bin'
+        clean_name = re.sub(r'["\r\n]', '', filename)
+        return Response(
+            content=content,
+            media_type='application/octet-stream',
+            headers={'Content-Disposition': f'attachment; filename="{clean_name}"'}
+        )
 
     @app.post('/api/projects/{pid}/sources/{sid}/validate')
     def validate_source(pid: str, sid: str, body: MappingInput):
@@ -262,28 +332,54 @@ def create_app(db_path=None):
     def overview(pid: str):
         p = project(pid)
         s = app.state.repo.active_snapshot(pid)
-        history = [dict(id=item['id'], version=item['version'], as_of=item['as_of'], filename=item['filename'], sheet=item['sheet']) for item in app.state.repo.snapshots(pid)]
+        all_snaps = app.state.repo.snapshots(pid)
+        history = [dict(id=item['id'], version=item['version'], as_of=item['as_of'], filename=item['filename'], sheet=item['sheet']) for item in all_snaps]
         previous = app.state.repo.previous_snapshot(pid, s['id']) if s else None
-        analysis = analyze(s['rows'], s['as_of']) if s else None
-        if analysis:
-            analysis = dict(analysis)
-            if 'evidence' in analysis:
-                analysis['evidence'] = analysis['evidence'][:50]
-            if 'insights' in analysis:
-                trimmed_insights = []
-                for ins in analysis['insights']:
-                    ins_copy = dict(ins)
-                    if 'evidence' in ins_copy and len(ins_copy['evidence']) > 20:
-                        ins_copy['evidence'] = ins_copy['evidence'][:20]
-                    trimmed_insights.append(ins_copy)
+        analysis_raw = analyze(s['rows'], s['as_of']) if s else None
+        analysis: dict[str, Any] | None = None
+        if analysis_raw:
+            analysis = dict(analysis_raw)
+            evidence = analysis.get('evidence')
+            if isinstance(evidence, list):
+                analysis['evidence'] = evidence[:50]
+            insights = analysis.get('insights')
+            if isinstance(insights, list):
+                trimmed_insights: list[dict[str, Any]] = []
+                for ins in insights:
+                    if isinstance(ins, dict):
+                        ins_copy = dict(ins)
+                        ins_ev = ins_copy.get('evidence')
+                        if isinstance(ins_ev, list) and len(ins_ev) > 20:
+                            ins_copy['evidence'] = ins_ev[:20]
+                        trimmed_insights.append(ins_copy)
                 analysis['insights'] = trimmed_insights
         snapshot_view = None
         if s:
             snapshot_view = dict(s)
             snapshot_view['total_rows'] = len(s['rows'])
             snapshot_view['rows'] = s['rows'][:100]
+
+        historical_trend = []
+        for snap in sorted(all_snaps, key=lambda item: item['version']):
+            try:
+                snap_metrics = analyze(snap['rows'], snap['as_of'])['metrics']
+                historical_trend.append({
+                    'version': snap['version'],
+                    'as_of': snap['as_of'],
+                    'progress': snap_metrics.get('progress'),
+                    'spi': snap_metrics.get('spi'),
+                    'cpi': snap_metrics.get('cpi'),
+                    'overdue': snap_metrics.get('overdue'),
+                    'bac': snap_metrics.get('bac'),
+                    'ev': snap_metrics.get('ev'),
+                    'ac': snap_metrics.get('ac'),
+                })
+            except Exception:
+                pass
+
         return dict(project=p, snapshot=snapshot_view, analysis=analysis,
-                    history=history, comparison=compare_snapshots(previous, s) if s else None,
+                    history=history, historical_trend=historical_trend,
+                    comparison=compare_snapshots(previous, s) if s else None,
                     forecast_readiness=readiness_for(pid, s) if s else None)
 
     @app.post('/api/projects/{pid}/assistant')

@@ -30,15 +30,32 @@ def decide_source(table, mapper):
     return {'dataset_type': dataset_type, 'mapping': mapping, 'decisions': decisions}
 
 
-def run_ingestion(project, uploads, repository, mapper):
+def run_ingestion(project, uploads, repository, mapper, storage_provider=None, progress_callback=None):
     """Read uploaded files, publish a valid semantic snapshot, or return a receipt."""
     sources, decisions, issues = [], [], []
-    for filename, content in uploads:
+
+    if progress_callback:
+        progress_callback('storing_raw', 15)
+
+    total_uploads = max(len(uploads), 1)
+    for idx, (filename, content) in enumerate(uploads):
         try:
+            stored = None
+            if storage_provider:
+                stored = storage_provider.put(project['id'], filename, content)
+
+            if progress_callback:
+                progress_callback('parsing', 20 + int(25 * (idx + 1) / total_uploads))
+
             inspection = inspect_source(filename, content)
             selected = inspection['sheets'][0]
             table = read_source(filename, content, selected['name'] if inspection['kind'] == 'xlsx' else None,
                                 selected['suggested_header_row'])
+            if stored:
+                table['storage_key'] = stored['storage_key']
+                table['size_bytes'] = stored['size_bytes']
+                table['storage_type'] = stored['storage_type']
+
             decision = decide_source(table, mapper)
             decisions.extend([{'filename': table['filename'], **item} for item in decision['decisions']])
             if not decision['dataset_type']:
@@ -47,31 +64,53 @@ def run_ingestion(project, uploads, repository, mapper):
                 continue
             table['dataset_type'] = decision['dataset_type']
             source = repository.add_source(project['id'], table)
+
+            if progress_callback:
+                progress_callback('validating', 45 + int(20 * (idx + 1) / total_uploads))
+
             checked = validate(source['rows'], decision['mapping'], source['id'], source['sheet'],
                                source['normalization'], source['dataset_type'])
             sources.append({**source, 'rows': checked['rows'], 'mapping': decision['mapping']})
             issues.extend([{**item, 'filename': source['filename']} for item in checked['errors']])
         except ValueError as exc:
             issues.append({'filename': filename, 'code': 'read_error', 'message': str(exc)})
+
     schedule_sources = [item for item in sources if item['dataset_type'] in ('schedule', 'combined')]
     if len(schedule_sources) != 1:
         issues.append({'code': 'schedule_required', 'message': 'Unggah tepat satu sumber Schedule atau Combined.'})
+
     if issues:
+        if progress_callback:
+            progress_callback('failed', 100)
         return {'status': 'needs_attention', 'summary': 'Agent memerlukan tinjauan data.',
                 'sources': _source_receipts(sources), 'issues': issues, 'decisions': decisions,
                 'coverage': {'schedule': 0, 'progress_matched': 0, 'cost_matched': 0}}
+
+    if progress_callback:
+        progress_callback('reconciling', 75)
+
     schedule = schedule_sources[0]
     progress = next((item for item in sources if item['dataset_type'] == 'progress'), None)
     cost = next((item for item in sources if item['dataset_type'] == 'cost'), None)
     merged = reconcile(schedule, progress, cost)
     if merged['errors']:
+        if progress_callback:
+            progress_callback('failed', 100)
         return {'status': 'needs_attention', 'summary': 'Agent menemukan data antar-sumber yang belum selaras.',
                 'sources': _source_receipts(sources), 'issues': merged['errors'], 'decisions': decisions,
                 'coverage': merged['coverage']}
+
+    if progress_callback:
+        progress_callback('publishing', 90)
+
     snapshot = repository.publish_reconciliation(project, schedule, [item for item in (schedule, progress, cost) if item],
                                                  {'schedule': schedule['mapping'],
                                                   'progress': progress['mapping'] if progress else None,
                                                   'cost': cost['mapping'] if cost else None}, merged['rows'])
+
+    if progress_callback:
+        progress_callback('completed', 100)
+
     return {'status': 'published', 'summary': 'Agent selesai membaca dan menerbitkan snapshot proyek.',
             'snapshot': snapshot, 'sources': _source_receipts(sources), 'issues': [],
             'decisions': decisions, 'coverage': merged['coverage']}
@@ -79,4 +118,5 @@ def run_ingestion(project, uploads, repository, mapper):
 
 def _source_receipts(sources):
     return [dict(id=item['id'], filename=item['filename'], dataset_type=item['dataset_type'],
-                 sheet=item['sheet'], row_count=len(item['rows']), mapping=item['mapping']) for item in sources]
+                 sheet=item['sheet'], row_count=len(item['rows']), mapping=item['mapping'],
+                 storage_key=item.get('storage_key'), sha256=item.get('sha256')) for item in sources]

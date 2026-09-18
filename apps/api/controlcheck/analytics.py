@@ -1,8 +1,9 @@
 """Pure deterministic measures: absence is not zero; one snapshot is not a trend."""
-from datetime import date
+from datetime import date, timedelta
+from typing import Any
 
 
-def analyze(rows, as_of):
+def analyze(rows, as_of) -> dict[str, Any]:
     date.fromisoformat(as_of)
     n = len(rows)
     limitations = []
@@ -190,5 +191,180 @@ def analyze(rows, as_of):
         insights.append(dict(id='cpi', severity='high', title=f'CPI {cpi:.2f}: biaya aktual melebihi earned value',
                              detail='EV / AC < 1 pada snapshot ini; tidak membuktikan penyebab biaya.',
                              action='Tinjau actual cost dan kuantitas pekerjaan yang diakui.', evidence=evidence))
+
+    s_curve = calculate_s_curve(rows, as_of)
+    forecasts = calculate_evm_forecasts(metrics)
+    if not s_curve['is_complete'] and s_curve['coverage'] != '0/0':
+        limitations.append(f'Cakupan tanggal untuk Kurva S ({s_curve["coverage"]}) belum lengkap.')
+
     return dict(metrics=metrics, insights=insights, recovery_priorities=recovery_priorities,
+                s_curve=s_curve, forecasts=forecasts,
                 limitations=limitations, evidence=evidence)
+
+
+def calculate_s_curve(rows, as_of) -> dict[str, Any]:
+    """Calculate deterministic time-phased S-curve points (planned vs actual)."""
+    if not rows:
+        return {'points': [], 'coverage': '0/0', 'is_complete': False}
+
+    as_of_date = date.fromisoformat(as_of)
+    valid_rows = []
+    for r in rows:
+        p_start = r.get('planned_start')
+        p_finish = r.get('planned_finish')
+        if p_start and p_finish:
+            try:
+                s_d = date.fromisoformat(p_start)
+                f_d = date.fromisoformat(p_finish)
+                if s_d <= f_d:
+                    valid_rows.append((r, s_d, f_d))
+            except (ValueError, TypeError):
+                pass
+
+    n = len(rows)
+    coverage = f"{len(valid_rows)}/{n}"
+    is_complete = (len(valid_rows) == n and n > 0)
+
+    if not valid_rows:
+        return {'points': [], 'coverage': coverage, 'is_complete': False}
+
+    min_date = min(s_d for _, s_d, _ in valid_rows)
+    max_date = max(f_d for _, _, f_d in valid_rows)
+    if min_date == max_date:
+        max_date = min_date + timedelta(days=7)
+
+    has_explicit = all(r.get('weight') is not None for r, _, _ in valid_rows)
+    has_budget = all(r.get('budget') is not None and r['budget'] > 0 for r, _, _ in valid_rows)
+
+    weights = []
+    for r, _, _ in valid_rows:
+        if has_explicit:
+            weights.append(r['weight'])
+        elif has_budget:
+            weights.append(r['budget'])
+        else:
+            weights.append(1.0)
+
+    total_weight = sum(weights) or 1.0
+
+    total_days = max(1, (max_date - min_date).days)
+    step_days = max(7, total_days // 15)
+
+    intervals = []
+    curr = min_date
+    while curr <= max_date:
+        intervals.append(curr)
+        curr += timedelta(days=step_days)
+    if intervals[-1] < max_date:
+        intervals.append(max_date)
+
+    points = []
+    for bucket_date in intervals:
+        period_label = bucket_date.strftime('%d %b %Y')
+
+        planned_sum = 0.0
+        for (r, s_d, f_d), w in zip(valid_rows, weights):
+            dur = max(1, (f_d - s_d).days + 1)
+            if bucket_date >= f_d:
+                frac = 1.0
+            elif bucket_date < s_d:
+                frac = 0.0
+            else:
+                elapsed = (bucket_date - s_d).days + 1
+                frac = min(1.0, max(0.0, elapsed / dur))
+            planned_sum += frac * 100.0 * w
+
+        planned_cum = round(planned_sum / total_weight, 2)
+
+        if bucket_date <= as_of_date:
+            actual_sum = 0.0
+            for (r, s_d, f_d), w in zip(valid_rows, weights):
+                act_p = r.get('actual_progress')
+                if act_p is None:
+                    act_p = 0.0
+                if bucket_date == as_of_date:
+                    frac_act = act_p / 100.0
+                elif bucket_date < s_d:
+                    frac_act = 0.0
+                else:
+                    as_of_dur = (as_of_date - s_d).days + 1
+                    cur_dur = (bucket_date - s_d).days + 1
+                    factor = min(1.0, max(0.0, cur_dur / as_of_dur)) if as_of_dur > 0 else 1.0
+                    frac_act = (act_p / 100.0) * factor
+                actual_sum += frac_act * 100.0 * w
+            actual_cum = round(actual_sum / total_weight, 2)
+        else:
+            actual_cum = None
+
+        points.append({
+            'period': period_label,
+            'date': bucket_date.isoformat(),
+            'planned_cumulative': min(100.0, planned_cum),
+            'actual_cumulative': min(100.0, actual_cum) if actual_cum is not None else None,
+        })
+
+    if points:
+        points[-1]['planned_cumulative'] = 100.0
+
+    return {
+        'points': points,
+        'coverage': coverage,
+        'is_complete': is_complete,
+    }
+
+
+def calculate_evm_forecasts(metrics) -> dict[str, Any]:
+    """Calculate deterministic EVM forecast measures (EAC, VAC, TCPI)."""
+    bac = metrics.get('bac')
+    ac = metrics.get('ac')
+    ev = metrics.get('ev')
+    spi = metrics.get('spi')
+    cpi = metrics.get('cpi')
+
+    assumptions = []
+    limitations = []
+
+    eac_cpi = None
+    if bac is not None and cpi is not None and cpi > 0:
+        eac_cpi = round(bac / cpi, 2)
+        assumptions.append('EAC (CPI): Mengasumsikan efisiensi biaya saat ini (CPI) berlanjut hingga akhir proyek.')
+    elif cpi == 0:
+        limitations.append('CPI bernilai 0; EAC (CPI) tidak dapat dihitung.')
+    else:
+        limitations.append('BAC atau CPI tidak lengkap; EAC (CPI) tidak dapat dihitung.')
+
+    eac_composite = None
+    if bac is not None and ac is not None and ev is not None and cpi is not None and spi is not None:
+        denom = cpi * spi
+        if denom > 0:
+            eac_composite = round(ac + (bac - ev) / denom, 2)
+            assumptions.append('EAC (Komposit): Mengasumsikan pengaruh biaya dan jadwal (CPI × SPI) mempengaruhi sisa pekerjaan.')
+        else:
+            limitations.append('Penyebut CPI × SPI bernilai nol atau negatif; EAC komposit ditiadakan.')
+
+    vac = None
+    if bac is not None and eac_cpi is not None:
+        vac = round(bac - eac_cpi, 2)
+
+    tcpi = None
+    if bac is not None and ev is not None and ac is not None:
+        rem_budget = bac - ac
+        rem_work = bac - ev
+        if rem_budget > 0:
+            tcpi = round(rem_work / rem_budget, 2)
+            if tcpi > 1.0:
+                assumptions.append(f'TCPI {tcpi:.2f}: Efisiensi biaya sisa pekerjaan harus ditingkatkan agar target anggaran tercapai.')
+            else:
+                assumptions.append(f'TCPI {tcpi:.2f}: Target anggaran dapat dicapai dengan efisiensi biaya moderat.')
+        else:
+            limitations.append('Anggaran tersisa (BAC - AC) <= 0; proyek telah melampaui total anggaran BAC.')
+
+    return {
+        'eac_cpi': eac_cpi,
+        'eac_composite': eac_composite,
+        'vac': vac,
+        'tcpi': tcpi,
+        'assumptions': assumptions,
+        'limitations': limitations,
+    }
+

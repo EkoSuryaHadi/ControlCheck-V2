@@ -21,6 +21,8 @@ flowchart LR
 | Path | Responsibility |
 |---|---|
 | apps/web/src | Workspace navigation, import review, insights, assistant and reports |
+| apps/api/controlcheck/storage.py | Abstract object storage provider (local disk or S3/MinIO) for raw file retention |
+| apps/api/controlcheck/queue.py | Asynchronous ingestion background queue, stage progression and worker loop |
 | apps/api/controlcheck/importers.py | Bounded CSV/XLSX/MPP/XML/XER reading and source identity |
 | apps/api/controlcheck/ingestion.py | Automatic classification, mapping, validation, reconciliation and receipt |
 | apps/api/controlcheck/project_files.py | Microsoft Project MPP/XML and Primavera P6 XER adapter and task normalization |
@@ -36,7 +38,7 @@ flowchart LR
 | infra | Local run boundaries and future infrastructure decisions |
 
 ## Lifecycle and persistence
-The Ingestion Agent reads bounded files, chooses the source structure, maps known fields, validates, reconciles Schedule with optional Progress/Cost, and returns an ordered decision receipt. CSV/XLSX files are capped at 5 MB and 10,000 rows; MPP/XER project files are capped at 50 MB and 25,000 activities, with 100 columns for every format. Valid results publish automatically; ambiguity or blocking quality findings return `needs_attention` without changing the active snapshot. Each accepted source retains project ID, file name, SHA-256, selected sheet, physical header row, normalization choices, headers and parsed rows. Raw bytes are not retained in this increment. Publication stores mappings, normalized rows, a publication reporting date and incremented version, then sets the project's active snapshot ID. Prior snapshots remain immutable. Overview compares only the active and previous versions, preserving unknown metrics as null and identifying activity changes by activity ID.
+The Ingestion Agent reads bounded files, stores raw bytes into object storage (`StorageProvider`), chooses the source structure, maps known fields, validates, reconciles Schedule with optional Progress/Cost, and returns an ordered decision receipt. An asynchronous job queue (`JobQueue`) processes large uploads without blocking the request thread and tracks granular progress stages. CSV/XLSX files are capped at 5 MB and 10,000 rows; MPP/XER project files are capped at 50 MB and 25,000 activities, with 100 columns for every format. Valid results publish automatically; ambiguity or blocking quality findings return `needs_attention` without changing the active snapshot. Each accepted source retains project ID, file name, SHA-256, storage key, selected sheet, physical header row, normalization choices, headers and parsed rows. Publication stores mappings, normalized rows, a publication reporting date and incremented version, then sets the project's active snapshot ID. Prior snapshots remain immutable. Overview compares only the active and previous versions, preserving unknown metrics as null and identifying activity changes by activity ID.
 
 Every SQL lookup includes project scope. This prevents accidental mixing within the application, but is NOT user authorization: the local service has no login. Bind to 127.0.0.1. No deployment to a shared/public host before authentication, workspace membership and authorization tests exist. CORS is limited to the local Vite origin. A source ID from project B is not accessible through project A.
 
@@ -47,7 +49,10 @@ All rows must contain the inputs for an aggregate; otherwise return null and a l
 - BAC = sum(budget); PV = sum(budget × planned_progress / 100); EV = sum(budget × actual_progress / 100); AC = sum(actual_cost).
 - SPI = EV / PV when PV > 0; CPI = EV / AC when AC > 0. SV = EV − PV; CV = EV − AC. Monetary variance is NOT duration variance.
 - Overdue: planned_finish < snapshot reporting date and actual_progress < 100. Missing facts suppress classification for that row; coverage is returned. No critical-path inference.
-- No trend, completion forecast or root cause without the additional evidence needed for it. Forecast Readiness only checks history, date/progress coverage and dependency integrity; it returns no outcome. A single snapshot does not prove why SPI changed.
+- S-Curve (Kurva-S): Time-phased deterministic distribution into weekly buckets from earliest planned_start to latest planned_finish. Linear distribution of planned progress over duration; cumulative actual progress mapped up to snapshot `as_of` date. Future actual values remain null. Missing dates suppress generation with clear coverage diagnostics.
+- EVM Forecasting: Deterministic PMI standard formulas: EAC_CPI = BAC / CPI; EAC_composite = AC + (BAC - EV) / (CPI × SPI); VAC = BAC - EAC_CPI; TCPI = (BAC - EV) / (BAC - AC). Division by zero or negative denominators are guarded and reported with data limitations.
+- Multi-period Historical Trend: Evaluates performance trajectory (Progress, SPI, CPI, Overdue) across all published snapshot versions in chronological sequence.
+- Forecast Readiness verifies data sufficiency (history, date/progress coverage, dependency integrity) before advanced models are consulted. A single snapshot does not prove why SPI changed.
 
 ## AI boundaries
 MappingProvider and AssistantProvider are protocols. The local provider is always available; an optional SumoPod adapter is enabled only when `SUMOPOD_API_KEY` is set. Future LLM adapters receive a bounded typed tool context, not database credentials. Schema suggestions must pass allow-list and uniqueness checks and human confirmation. Answers must cite source IDs/rows and show snapshot version. Provider failures must not publish data or invent facts. Do not use a vector store as the calculator or as the canonical numeric model.

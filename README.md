@@ -66,9 +66,9 @@ Use one complete leaf-activity snapshot per upload. A new publication replaces t
 
 ## What works / what is a foundation
 
-- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML/Primavera P6 XER, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic Forecast Readiness gate, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
-- Interfaces prepared: XER importer, forecast method/range calculation and agent action proposals.
-- Not connected: forecast date/probability calculation, production authentication, tenant permissions, queued ingestion, PDF export and autonomous actions.
+- Working: project creation/selection, automatic agent ingestion for CSV/XLSX/MPP/Project XML/Primavera P6 XER, raw binary object storage retention (local disk / S3-MinIO abstraction) with SHA-256 integrity check and download capability, asynchronous background worker queue with granular progress tracking, persisted uploads, advanced editable mapping, quality gate, immutable normalized snapshot versions with per-publication reporting dates, consecutive-period comparison, deterministic Forecast Readiness gate, time-phased deterministic S-Curve (Kurva-S) with weekly planned vs actual progress tracking and SVG visualization, deterministic standard EVM forecasting (EAC, VAC, TCPI), multi-period historical trend across snapshots, deterministic schedule/progress/cost analytics, critical/milestone and dependency-impact analysis when supplied by the schedule, evidence-backed rule insights, optional SumoPod Grounded AI with validated citations, conversation history and Markdown export.
+- Interfaces prepared: XER importer, probabilistic forecast method/range calculation and agent action proposals.
+- Not connected: probabilistic completion dates (Monte Carlo), production authentication, tenant permissions, PDF export and autonomous actions.
 
 Without a configured key, the assistant is explicitly labelled **Analitik lokal**. With `SUMOPOD_API_KEY`, the selected SumoPod model receives bounded approved snapshot context and must return validated row citations. Read the production gates before deploying to shared infrastructure.
 
@@ -98,6 +98,6 @@ See [PRD](docs/PRD.md), [Architecture](docs/ARCHITECTURE.md), [Screen inventory]
 
 Before real multiuser deployment: authentication, authorization, migrations, original-file retention/deletion, audit, backup/restore, body limits and workload tests are required. This increment is intended for loopback-only development.
 
-### UI workspace (15 September 2026)
+### UI workspace (18 September 2026)
 
-Frontend memakai identitas navy, putih lembut, dan hijau, navigasi berbahasa Indonesia, akses Upload Data/Tanya AI pada halaman proyek, serta label mode assistant berdasarkan konfigurasi aktif. Status pemrosesan upload masih menampilkan satu status proses; progres per tahap belum tersedia dari API.
+Frontend memakai identitas navy, putih lembut, dan hijau, navigasi berbahasa Indonesia, akses Upload Data/Tanya AI pada halaman proyek, label mode assistant, progress bar bertahap saat pemrosesan antrean latar belakang (storing raw, parsing, validating, reconciling, publishing), serta opsi unduh file mentah asli dari object storage.

@@ -1,7 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, apiUrl, json } from './api';
-import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight, DatasetType, Reconciliation, IngestionReceipt, AiModels, Conversation, SnapshotComparison, ForecastReadiness } from './types';
+import type { Project, Overview, Source, SourceInspection, Quality, Answer, Evidence, Insight, DatasetType, Reconciliation, IngestionReceipt, AiModels, Conversation, SnapshotComparison, ForecastReadiness, IngestionJob, JobStage, SCurveData, SCurvePoint, EvmForecasts, HistoricalTrendPoint } from './types';
 
+const stageLabels: Record<JobStage, string> = {
+  queued: 'Menunggu antrean worker...',
+  storing_raw: 'Menyimpan salinan biner mentah ke object storage & verifikasi SHA-256...',
+  parsing: 'Membaca dan mem-parsing struktur tabel...',
+  validating: 'Memvalidasi kepatuhan semantik dan kualitas data...',
+  reconciling: 'Merekonsiliasi data jadwal, progres, dan biaya...',
+  publishing: 'Menerbitkan snapshot versi terbaru...',
+  completed: 'Selesai diproses.',
+  failed: 'Gagal diproses.',
+};
 const tabLabels: Record<string,string> = {Overview:'Ringkasan','Data Center':'Pusat Data','AI Assistant':'AI Assistant',Insights:'Insight',Reports:'Laporan',Settings:'Pengaturan'};
 const tabs = ['Overview', 'Data Center', 'AI Assistant', 'Insights', 'Reports', 'Settings'] as const;
 type Tab = typeof tabs[number];
@@ -106,6 +116,207 @@ function ForecastReadinessCard({ readiness }: { readiness: ForecastReadiness }) 
   return <section className={'forecast-readiness '+status.tone}><div className="section-title"><div><span className="eyebrow">FORECAST READINESS · SNAPSHOT v{readiness.snapshot_version}</span><h2>{status.label}</h2><p className="muted">{readiness.reporting_dates.length} periode laporan diperiksa. Forecast belum dihitung.</p></div><span className="tag">{readiness.status.replaceAll('_', ' ').toUpperCase()}</span></div><div className="readiness-checks">{readiness.checks.map(check=><p key={check.id} className={check.status}><b>{check.status === 'pass' ? '✓' : check.status === 'blocked' ? '!' : '—'}</b>{check.detail}</p>)}</div>{readiness.warnings.map(item=><p key={item} className="readiness-warning">{item}</p>)}<details className="limitations"><summary>Batasan forecast</summary>{readiness.limitations.map(item=><p key={item}>{item}</p>)}</details></section>;
 }
 
+function SCurveCard({ sCurve }: { sCurve?: SCurveData }) {
+  if (!sCurve || !sCurve.points || sCurve.points.length === 0) {
+    return (
+      <section className="scurve-section">
+        <div className="section-title">
+          <div>
+            <h2>Kurva S Proyek (Planned vs Actual)</h2>
+            <p className="muted">Kurva S belum dapat dihitung karena tanggal rencana aktivitas belum lengkap ({sCurve?.coverage || '0/0'}).</p>
+          </div>
+          <span className="tag">KURVA S</span>
+        </div>
+      </section>
+    );
+  }
+
+  const points = sCurve.points;
+  const width = 640;
+  const height = 260;
+  const padLeft = 45;
+  const padRight = 30;
+  const padTop = 30;
+  const padBottom = 40;
+
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
+
+  const n = points.length;
+  const getX = (idx: number) => padLeft + (idx / Math.max(1, n - 1)) * plotW;
+  const getY = (val: number) => padTop + plotH - (Math.min(100, Math.max(0, val)) / 100) * plotH;
+
+  const plannedPoints = points.map((p, i) => `${getX(i)},${getY(p.planned_cumulative)}`).join(' ');
+  const actualIndexed = points
+    .map((p, i) => (p.actual_cumulative != null ? { x: getX(i), y: getY(p.actual_cumulative), pt: p } : null))
+    .filter(Boolean) as { x: number; y: number; pt: SCurvePoint }[];
+  const actualPoints = actualIndexed.map(item => `${item.x},${item.y}`).join(' ');
+  const lastActual = actualIndexed[actualIndexed.length - 1];
+
+  return (
+    <section className="scurve-section">
+      <div className="section-title">
+        <div>
+          <h2>Kurva S Proyek (Planned vs Actual)</h2>
+          <p className="muted">Distribusi time-phased mingguan dari tanggal rencana aktivitas · Cakupan tanggal: {sCurve.coverage} aktivitas</p>
+        </div>
+        <div className="scurve-legend">
+          <span className="legend-item planned"><i /> Planned (PV)</span>
+          <span className="legend-item actual"><i /> Actual (EV)</span>
+        </div>
+      </div>
+
+      <div className="scurve-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} className="scurve-svg" preserveAspectRatio="xMidYMid meet">
+          {[0, 25, 50, 75, 100].map(pct => {
+            const y = getY(pct);
+            return (
+              <g key={pct}>
+                <line x1={padLeft} y1={y} x2={width - padRight} y2={y} stroke="var(--line)" strokeDasharray="3 3" />
+                <text x={padLeft - 8} y={y + 4} textAnchor="end" fontSize="10" fill="var(--muted)">{pct}%</text>
+              </g>
+            );
+          })}
+
+          {points.length > 0 && (
+            <>
+              <text x={getX(0)} y={height - 12} textAnchor="start" fontSize="10" fill="var(--muted)">{points[0].period}</text>
+              {points.length > 2 && (
+                <text x={getX(Math.floor(points.length / 2))} y={height - 12} textAnchor="middle" fontSize="10" fill="var(--muted)">{points[Math.floor(points.length / 2)].period}</text>
+              )}
+              <text x={getX(points.length - 1)} y={height - 12} textAnchor="end" fontSize="10" fill="var(--muted)">{points[points.length - 1].period}</text>
+            </>
+          )}
+
+          {plannedPoints && (
+            <polyline fill="none" stroke="#172e45" strokeWidth="2.5" strokeDasharray="5 5" points={plannedPoints} />
+          )}
+          {actualPoints && (
+            <polyline fill="none" stroke="#11694f" strokeWidth="3" points={actualPoints} />
+          )}
+
+          {actualIndexed.map((item, idx) => (
+            <circle key={idx} cx={item.x} cy={item.y} r="3.5" fill="#11694f" stroke="#fff" strokeWidth="1.5">
+              <title>{`${item.pt.period}: Actual ${item.pt.actual_cumulative}% (Planned ${item.pt.planned_cumulative}%)`}</title>
+            </circle>
+          ))}
+
+          {lastActual && (
+            <g>
+              <circle cx={lastActual.x} cy={lastActual.y} r="5.5" fill="#45b88a" stroke="#11694f" strokeWidth="2" />
+              <text x={lastActual.x} y={lastActual.y - 9} textAnchor="middle" fontSize="10" fontWeight="bold" fill="#11694f">
+                {lastActual.pt.actual_cumulative}%
+              </text>
+            </g>
+          )}
+        </svg>
+      </div>
+    </section>
+  );
+}
+
+function EvmForecastCard({ forecasts, currency }: { forecasts?: EvmForecasts; currency?: string }) {
+  if (!forecasts) return null;
+  const vacPositive = forecasts.vac != null && forecasts.vac >= 0;
+  const curr = currency || 'IDR';
+
+  return (
+    <section className="forecast-card">
+      <div className="section-title">
+        <div>
+          <h2>Proyeksi Biaya & Kinerja (EVM Forecasting)</h2>
+          <p className="muted">Perhitungan deterministik baku Earned Value Management (PMI Standard) berdasarkan snapshot aktif</p>
+        </div>
+        <span className="tag">EVM FORECAST</span>
+      </div>
+
+      <div className="forecast-metrics-grid">
+        <div className="f-metric">
+          <span>EAC (Trend CPI)</span>
+          <strong>{forecasts.eac_cpi != null ? `${curr} ${number(forecasts.eac_cpi)}` : '—'}</strong>
+          <small>Proyeksi biaya akhir jika efisiensi CPI berlanjut</small>
+        </div>
+        <div className="f-metric">
+          <span>EAC (Komposit CPI × SPI)</span>
+          <strong>{forecasts.eac_composite != null ? `${curr} ${number(forecasts.eac_composite)}` : '—'}</strong>
+          <small>Memperhitungkan dampak biaya & jadwal</small>
+        </div>
+        <div className="f-metric">
+          <span>VAC (Varians Akhir)</span>
+          <strong className={vacPositive ? 'positive' : 'negative'}>
+            {forecasts.vac != null ? `${forecasts.vac > 0 ? '+' : ''}${curr} ${number(forecasts.vac)}` : '—'}
+          </strong>
+          <small>{vacPositive ? 'Potensi penghematan anggaran' : 'Potensi pembengkakan anggaran (Overrun)'}</small>
+        </div>
+        <div className="f-metric">
+          <span>TCPI (Target Efisiensi)</span>
+          <strong>{forecasts.tcpi != null ? forecasts.tcpi.toFixed(2) : '—'}</strong>
+          <small>{forecasts.tcpi != null && forecasts.tcpi > 1.0 ? 'Kinerja sisa harus lebih efisien' : 'Target BAC masih realistis dicapai'}</small>
+        </div>
+      </div>
+
+      {forecasts.assumptions.length > 0 && (
+        <details className="limitations" style={{marginTop:'14px'}}>
+          <summary>Asumsi & Formula EVM</summary>
+          {forecasts.assumptions.map((a, i) => <p key={i}>• {a}</p>)}
+          {forecasts.limitations.map((l, i) => <p key={i} className="quality-error">• {l}</p>)}
+        </details>
+      )}
+    </section>
+  );
+}
+
+function HistoricalTrendCard({ trend }: { trend?: HistoricalTrendPoint[] }) {
+  if (!trend || trend.length < 2) return null;
+
+  return (
+    <section className="trend-section">
+      <div className="section-title">
+        <div>
+          <h2>Tren Riwayat Kinerja (Lintas Snapshot)</h2>
+          <p className="muted">Evolusi performa dari versi snapshot pertama hingga aktif ({trend.length} periode laporan)</p>
+        </div>
+        <span className="tag">{trend.length} SNAPSHOT</span>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Versi</th>
+              <th>Tanggal Laporan</th>
+              <th>Progress</th>
+              <th>SPI</th>
+              <th>CPI</th>
+              <th>Terlambat</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trend.map(t => (
+              <tr key={t.version}>
+                <td><strong>v{t.version}</strong></td>
+                <td>{t.as_of}</td>
+                <td>{number(t.progress)}{t.progress != null ? '%' : ''}</td>
+                <td>
+                  <span className={t.spi != null && t.spi >= 1.0 ? 'tag low' : 'tag medium'}>
+                    {number(t.spi)}
+                  </span>
+                </td>
+                <td>
+                  <span className={t.cpi != null && t.cpi >= 1.0 ? 'tag low' : 'tag high'}>
+                    {number(t.cpi)}
+                  </span>
+                </td>
+                <td>{t.overdue ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const [projects,setProjects] = useState<Project[]>([]);
   const [selected,setSelected] = useState('');
@@ -163,6 +374,7 @@ function Workspace({project}: {project: Project}) {
   const [reconciliation,setReconciliation] = useState<Reconciliation|null>(null);
   const [agentFiles,setAgentFiles] = useState<File[]>([]);
   const [ingestion,setIngestion] = useState<IngestionReceipt|null>(null);
+  const [activeJob,setActiveJob] = useState<IngestionJob|null>(null);
   const [busy,setBusy] = useState('');
   const [loading,setLoading] = useState(true);
   const [error,setError] = useState('');
@@ -237,17 +449,53 @@ function Workspace({project}: {project: Project}) {
     await api(base+'/reconciliations/publish',json(reconciliationPayload())); await refresh(); setAnswers([]); setReport(''); setTab('Overview');
     setNotice('Snapshot gabungan dipublikasikan. Overview dan assistant memakai versi data ini.');
   }); }
-  async function ingestAutomatically(e: FormEvent) { e.preventDefault(); if (!agentFiles.length) return; await run('Agent membaca dan memeriksa data proyek…',async()=>{
-    const form = new FormData();
-    for (const f of agentFiles) {
-      const uploadFile = await compressFileIfNeeded(f);
-      form.append('files', uploadFile, f.name);
-    }
-    const receipt = await api<IngestionReceipt>(base+'/ingestions?as_of='+encodeURIComponent(reportingDate), {method:'POST', body:form});
-    setIngestion(receipt); await refresh(); setAnswers([]); setReport('');
+  async function ingestAutomatically(e: FormEvent) {
+    e.preventDefault();
+    if (!agentFiles.length) return;
+    setError(''); setNotice('');
+    setBusy('Mengunggah file ke antrean latar belakang…');
+    try {
+      const form = new FormData();
+      for (const f of agentFiles) {
+        const uploadFile = await compressFileIfNeeded(f);
+        form.append('files', uploadFile, f.name);
+      }
+      const initialJob = await api<IngestionJob>(base + '/ingestions/async?as_of=' + encodeURIComponent(reportingDate), {
+        method: 'POST',
+        body: form,
+      });
+      setActiveJob(initialJob);
+      setBusy('Memproses data di antrean latar belakang…');
 
-    if (receipt.status === 'published') setNotice('Agent selesai. Snapshot proyek sudah aktif.');
-  }); }
+      let currentJob = initialJob;
+      while (currentJob.status === 'queued' || currentJob.status === 'running') {
+        await new Promise(r => setTimeout(r, 800));
+        currentJob = await api<IngestionJob>(base + '/jobs/' + initialJob.id);
+        setActiveJob(currentJob);
+      }
+
+      if (currentJob.status === 'completed') {
+        const receipt = currentJob.result_payload;
+        if (receipt) {
+          setIngestion(receipt);
+          await refresh();
+          setAnswers([]);
+          setReport('');
+          if (receipt.status === 'published') {
+            setNotice('Agent selesai. Snapshot proyek berhasil dipublikasikan!');
+          } else {
+            setNotice('Agent selesai. Ada data yang perlu ditinjau.');
+          }
+        }
+      } else if (currentJob.status === 'failed') {
+        setError('Proses antrean gagal: ' + (currentJob.error_message || 'Terjadi kesalahan sistem.'));
+      }
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy('');
+    }
+  }
   async function ask(q=question) { if (!q.trim()) return; await run('Menganalisis snapshot…',async()=>{
     const response=await api<Answer>(base+'/assistant',json({question:q,...(aiModels?.enabled && model ? {model} : {})})); setAnswers(old=>[...old,{question:q,response}]); setQuestion('');
   }); }
@@ -280,6 +528,9 @@ function Workspace({project}: {project: Project}) {
         <div className="overview-grid"><section><div className="section-title"><h2>Perlu perhatian</h2><span>{analysis?.insights.length} sinyal</span></div>{analysis?.insights.length ? analysis.insights.slice(0,2).map(i=><InsightItem key={i.id} insight={i}/>) : <p className="muted">Tidak ada aturan yang terpicu. Tinjau kualitas dan cakupan data sebelum menyimpulkan kondisi proyek.</p>}<button className="text-button" onClick={()=>setTab('Insights')}>Lihat seluruh insight →</button></section><section className="assistant-invite"><span className="eyebrow">PROJECT INTELLIGENCE ASSISTANT</span><h2>Ubah angka<br/>menjadi pemahaman.</h2><p>Tanyakan kondisi proyek, perubahan sejak laporan sebelumnya, progress, biaya, atau pekerjaan yang melewati rencana selesai.</p><button onClick={()=>setTab('AI Assistant')}>Tanya assistant ↗</button><small>{aiModels?.enabled ? 'Grounded AI · citation tervalidasi' : 'Mode analitik lokal · berbasis sumber'}</small></section></div>
         {comparison && <ComparisonCard comparison={comparison}/>}
         {forecastReadiness && <ForecastReadinessCard readiness={forecastReadiness}/>}
+        <SCurveCard sCurve={analysis?.s_curve} />
+        <EvmForecastCard forecasts={analysis?.forecasts} currency={project.currency} />
+        <HistoricalTrendCard trend={overview?.historical_trend} />
         <section className="budget-strip"><h2>Ringkasan biaya <small>{project.currency}</small></h2><dl><div><dt>Budget at completion</dt><dd>{number(metrics.bac)}</dd></div><div><dt>Planned value</dt><dd>{number(metrics.pv)}</dd></div><div><dt>Earned value</dt><dd>{number(metrics.ev)}</dd></div><div><dt>Actual cost</dt><dd>{number(metrics.ac)}</dd></div></dl></section>
         <section>
           <div className="section-title">
@@ -358,12 +609,29 @@ function Workspace({project}: {project: Project}) {
         </section><details className="limitations"><summary>Cakupan dan keterbatasan analisis</summary>{analysis?.limitations.map(l=><p key={l}>{l}</p>)}<EvidenceList evidence={analysis?.evidence || []}/></details>
       </>)}
       {tab==='Data Center' && <>
-        <p className="lead">Upload file proyek, lalu biarkan agent menyusun konteks dan snapshot untuk Anda.</p><section className="upload-area agent-upload"><div><span className="step-number">INGESTION AGENT</span><h2>Upload jadwal Anda.<br/>Biarkan agent membacanya.</h2><p>CSV, Excel, Microsoft Project MPP/XML, atau Primavera P6 XER. Schedule saja juga dapat langsung diproses.</p></div><form className="upload-controls" onSubmit={ingestAutomatically}><label>Tanggal laporan<input type="date" value={reportingDate} onChange={e=>setReportingDate(e.target.value)} required disabled={!!busy}/></label><label>File proyek<input type="file" accept=".csv,.xlsx,.mpp,.xml,.xer" multiple required onChange={e=>{setAgentFiles(Array.from(e.target.files || []));setIngestion(null)}} disabled={!!busy}/></label><p className="hint">{agentFiles.length ? agentFiles.map(file=>file.name).join(' · ') : 'Pilih satu atau beberapa file.'}</p><button disabled={!!busy || !agentFiles.length}>Analisis project data →</button><small>CSV/XLSX maks. 5 MB dan 10.000 baris · MPP/XER maks. 50 MB dan 25.000 aktivitas. MPP/XER memerlukan Java 17.</small></form></section>{ingestion && <section className="quality ingestion-receipt"><span className={'tag '+(ingestion.status==='published'?'low':'high')}>{ingestion.status==='published'?'SNAPSHOT SIAP':'PERLU TINJAUAN'}</span><h3>{ingestion.summary}</h3><p>{ingestion.coverage.schedule} aktivitas Schedule · {ingestion.coverage.progress_matched} Progress cocok · {ingestion.coverage.cost_matched} Cost cocok</p><details><summary>Keputusan agent</summary>{ingestion.decisions.map((item,i)=><p key={i}>{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}</details>{ingestion.issues.map((item,i)=><p key={i} className="quality-error">{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}<div className="button-row">{ingestion.status==='published' ? <button onClick={()=>setTab('Overview')}>Buka project overview →</button> : <button className="secondary" onClick={()=>setNotice('Pilih sumber di bawah untuk meninjau dan memperbaiki data.')}>Review data ↓</button>}</div></section>}<details className="advanced-review"><summary>Tinjau data secara manual</summary><p className="hint">Gunakan bila ingin memilih sheet, header, format angka, mapping, atau publikasi secara manual.</p><form className="upload-area" onSubmit={upload}><div><span className="step-number">01 / INSPEKSI SOURCE</span><h2>Excel atau CSV,<br/>siap untuk dipahami.</h2><p>Periksa struktur file, lalu tentukan cara membaca tanggal, angka, dan persentase.</p>{selectedSheet && <div className="matrix-preview"><strong>Preview · {selectedSheet.name}</strong>{selectedSheet.preview.map((row,i)=><div key={i} className={i+1===headerRow?'chosen-header':''}><span>{i+1}</span><code>{row.map(value=>value || '—').join('  |  ')}</code></div>)}</div>}</div><div className="upload-controls"><label>Jenis data<select value={datasetType} onChange={e=>setDatasetType(e.target.value as DatasetType)} disabled={!!busy}><option value="schedule">Schedule (utama)</option><option value="progress">Progress</option><option value="cost">Cost</option><option value="combined">Snapshot gabungan</option></select></label><label>File data<input type="file" accept=".csv,.xlsx" required onChange={e=>{setFile(e.target.files?.[0] || null);setInspection(null);setSource(null);setQuality(null);}} disabled={!!busy}/></label><button type="button" className="secondary" disabled={!file || !!busy} onClick={()=>void inspectFile()}>Periksa struktur file</button>{inspection && <><label>Sheet<select value={sheet} onChange={e=>{const value=e.target.value;setSheet(value);const next=inspection.sheets.find(item=>item.name===value);setHeaderRow(next?.suggested_header_row || 1);}} disabled={!!busy}>{inspection.sheets.map(item=><option key={item.name}>{item.name}</option>)}</select></label><label>Baris header<input type="number" min="1" max="50" value={headerRow} onChange={e=>setHeaderRow(Number(e.target.value))} disabled={!!busy}/></label><div className="form-row"><label>Format tanggal<select value={dateFormat} onChange={e=>setDateFormat(e.target.value)}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label><label>Desimal<select value={decimalSeparator} onChange={e=>setDecimalSeparator(e.target.value)}><option value="dot">Titik (1000.50)</option><option value="comma">Koma (1000,50)</option></select></label></div><label>Skala progress<select value={percentScale} onChange={e=>setPercentScale(e.target.value)}><option value="points">Persen 0–100</option><option value="fraction">Pecahan 0–1</option></select></label><button disabled={!!busy}>Baca data dengan aturan ini →</button></>}<small>5 MB · 10.000 baris · CSV UTF-8 / XLSX</small></div></form></details>
+        <p className="lead">Upload file proyek, lalu biarkan agent menyusun konteks dan snapshot untuk Anda.</p><section className="upload-area agent-upload"><div><span className="step-number">INGESTION AGENT</span><h2>Upload jadwal Anda.<br/>Biarkan agent membacanya.</h2><p>CSV, Excel, Microsoft Project MPP/XML, atau Primavera P6 XER. Schedule saja juga dapat langsung diproses.</p></div><form className="upload-controls" onSubmit={ingestAutomatically}><label>Tanggal laporan<input type="date" value={reportingDate} onChange={e=>setReportingDate(e.target.value)} required disabled={!!busy}/></label><label>File proyek<input type="file" accept=".csv,.xlsx,.mpp,.xml,.xer" multiple required onChange={e=>{setAgentFiles(Array.from(e.target.files || []));setIngestion(null)}} disabled={!!busy}/></label><p className="hint">{agentFiles.length ? agentFiles.map(file=>file.name).join(' · ') : 'Pilih satu atau beberapa file.'}</p><button disabled={!!busy || !agentFiles.length}>Analisis project data →</button><small>CSV/XLSX maks. 5 MB dan 10.000 baris · MPP/XER maks. 50 MB dan 25.000 aktivitas. MPP/XER memerlukan Java 17.</small></form></section>
+        {activeJob && (activeJob.status === 'queued' || activeJob.status === 'running') && (
+          <section className="job-progress-card">
+            <div className="job-progress-header">
+              <span className="job-spinner"></span>
+              <div>
+                <strong>{stageLabels[activeJob.stage] || 'Memproses data proyek...'}</strong>
+                <p className="hint" style={{margin:'3px 0 0'}}>
+                  Status: {activeJob.status.toUpperCase()} · Tahap: {activeJob.stage} ({activeJob.progress_percent}%)
+                </p>
+              </div>
+            </div>
+            <div className="progress-bar-track">
+              <div className="progress-bar-fill" style={{width: `${Math.max(activeJob.progress_percent, 5)}%`}} />
+            </div>
+          </section>
+        )}
+        {ingestion && <section className="quality ingestion-receipt"><span className={'tag '+(ingestion.status==='published'?'low':'high')}>{ingestion.status==='published'?'SNAPSHOT SIAP':'PERLU TINJAUAN'}</span><h3>{ingestion.summary}</h3><p>{ingestion.coverage.schedule} aktivitas Schedule · {ingestion.coverage.progress_matched} Progress cocok · {ingestion.coverage.cost_matched} Cost cocok</p><details><summary>Keputusan agent</summary>{ingestion.decisions.map((item,i)=><p key={i}>{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}</details>{ingestion.issues.map((item,i)=><p key={i} className="quality-error">{item.filename ? item.filename+' · ' : ''}{item.message}</p>)}<div className="button-row">{ingestion.status==='published' ? <button onClick={()=>setTab('Overview')}>Buka project overview →</button> : <button className="secondary" onClick={()=>setNotice('Pilih sumber di bawah untuk meninjau dan memperbaiki data.')}>Review data ↓</button>}</div></section>}<details className="advanced-review"><summary>Tinjau data secara manual</summary><p className="hint">Gunakan bila ingin memilih sheet, header, format angka, mapping, atau publikasi secara manual.</p><form className="upload-area" onSubmit={upload}><div><span className="step-number">01 / INSPEKSI SOURCE</span><h2>Excel atau CSV,<br/>siap untuk dipahami.</h2><p>Periksa struktur file, lalu tentukan cara membaca tanggal, angka, dan persentase.</p>{selectedSheet && <div className="matrix-preview"><strong>Preview · {selectedSheet.name}</strong>{selectedSheet.preview.map((row,i)=><div key={i} className={i+1===headerRow?'chosen-header':''}><span>{i+1}</span><code>{row.map(value=>value || '—').join('  |  ')}</code></div>)}</div>}</div><div className="upload-controls"><label>Jenis data<select value={datasetType} onChange={e=>setDatasetType(e.target.value as DatasetType)} disabled={!!busy}><option value="schedule">Schedule (utama)</option><option value="progress">Progress</option><option value="cost">Cost</option><option value="combined">Snapshot gabungan</option></select></label><label>File data<input type="file" accept=".csv,.xlsx" required onChange={e=>{setFile(e.target.files?.[0] || null);setInspection(null);setSource(null);setQuality(null);}} disabled={!!busy}/></label><button type="button" className="secondary" disabled={!file || !!busy} onClick={()=>void inspectFile()}>Periksa struktur file</button>{inspection && <><label>Sheet<select value={sheet} onChange={e=>{const value=e.target.value;setSheet(value);const next=inspection.sheets.find(item=>item.name===value);setHeaderRow(next?.suggested_header_row || 1);}} disabled={!!busy}>{inspection.sheets.map(item=><option key={item.name}>{item.name}</option>)}</select></label><label>Baris header<input type="number" min="1" max="50" value={headerRow} onChange={e=>setHeaderRow(Number(e.target.value))} disabled={!!busy}/></label><div className="form-row"><label>Format tanggal<select value={dateFormat} onChange={e=>setDateFormat(e.target.value)}><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label><label>Desimal<select value={decimalSeparator} onChange={e=>setDecimalSeparator(e.target.value)}><option value="dot">Titik (1000.50)</option><option value="comma">Koma (1000,50)</option></select></label></div><label>Skala progress<select value={percentScale} onChange={e=>setPercentScale(e.target.value)}><option value="points">Persen 0–100</option><option value="fraction">Pecahan 0–1</option></select></label><button disabled={!!busy}>Baca data dengan aturan ini →</button></>}<small>5 MB · 10.000 baris · CSV UTF-8 / XLSX</small></div></form></details>
         <p className="hint">Satu baris = satu aktivitas. Schedule adalah sumber utama. Progress dan Cost dapat ditambahkan untuk memperkaya snapshot yang sama.</p>
         {sources.length>0 && <section className="reconciliation"><div className="section-title"><h2>02 / Susun snapshot proyek</h2><span className="tag">SCHEDULE MASTER</span></div><p className="muted">Pilih Schedule, lalu tambahkan Progress atau Cost bila tersedia. Setiap ID aktivitas tambahan harus cocok dengan Schedule.</p><div className="form-row"><label>Tanggal laporan<input type="date" value={reportingDate} onChange={e=>setReportingDate(e.target.value)} required disabled={!!busy}/></label><label>Schedule<select value={scheduleId} onChange={e=>{setScheduleId(e.target.value);setReconciliation(null)}} disabled={!!busy}><option value="">Pilih Schedule</option>{sources.filter(s=>s.dataset_type==='schedule'||s.dataset_type==='combined').map(s=><option key={s.id} value={s.id}>{s.filename} · {s.row_count} baris</option>)}</select></label><label>Progress (opsional)<select value={progressId} onChange={e=>{setProgressId(e.target.value);setReconciliation(null)}} disabled={!!busy}><option value="">Tanpa Progress</option>{sources.filter(s=>s.dataset_type==='progress'||s.dataset_type==='combined').map(s=><option key={s.id} value={s.id}>{s.filename} · {s.row_count} baris</option>)}</select></label><label>Cost (opsional)<select value={costId} onChange={e=>{setCostId(e.target.value);setReconciliation(null)}} disabled={!!busy}><option value="">Tanpa Cost</option>{sources.filter(s=>s.dataset_type==='cost'||s.dataset_type==='combined').map(s=><option key={s.id} value={s.id}>{s.filename} · {s.row_count} baris</option>)}</select></label></div><p className="hint">Tanggal laporan menentukan evaluasi keterlambatan dan pembandingan snapshot.</p><div className="button-row"><button className="secondary" onClick={()=>void previewReconciliation()} disabled={!!busy||!scheduleId}>Periksa kecocokan</button><button onClick={()=>void publishReconciliation()} disabled={!!busy||!scheduleId||!reconciliation||reconciliation.errors.length>0}>Publikasikan snapshot gabungan →</button></div>{reconciliation && <div className="quality"><h3>Kecocokan sumber · {reconciliation.errors.length} masalah</h3><p>{reconciliation.coverage.schedule} aktivitas Schedule · {reconciliation.coverage.progress_matched} Progress cocok · {reconciliation.coverage.cost_matched} Cost cocok</p>{reconciliation.errors.map((issue,i)=><p key={i} className="quality-error">{issue.message}</p>)}</div>}</section>}
         {sources.length>0 && <label className="source-picker">Sumber yang diunggah<select value={source?.id || ''} onChange={e=>{const s=sources.find(s=>s.id===e.target.value);if(s)selectSource(s);}} disabled={!!busy}><option value="" disabled>Pilih sumber untuk ditinjau</option>{sources.map(s=><option key={s.id} value={s.id}>[{s.dataset_type}] {s.filename} · {s.sheet} · {s.row_count} baris</option>)}</select></label>}
         {source && <section><div className="section-title"><h2>02 / Tinjau schema mapping</h2><span className="tag">SARAN ALIAS LOKAL</span></div><p className="muted">{source.filename} · {source.sheet} · {source.row_count} baris</p><div className="table-wrap"><table><thead><tr><th>Kolom sumber</th><th>Field proyek</th><th>Saran awal</th></tr></thead><tbody>{source.suggestions.map(s=><tr key={s.column}><td>{s.column}</td><td><select aria-label={'Mapping '+s.column} disabled={!!busy} value={mapping[s.column] || ''} onChange={e=>{setMapping(old=>({...old,[s.column]:e.target.value || null}));setQuality(null);}}><option value="">Abaikan</option>{fieldNames.map(f=><option key={f} value={f}>{f}</option>)}</select></td><td><span>{Math.round(s.confidence*100)}% alias match</span><small className="block">{s.reason}</small></td></tr>)}</tbody></table></div>
-        <details className="source-preview"><summary>Preview sumber · {Math.min(5,source.row_count)} baris pertama</summary><div className="table-wrap"><table><thead><tr>{source.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{source.preview.map((r,i)=><tr key={i}>{source.headers.map(h=><td key={h}>{r[h] || '—'}</td>)}</tr>)}</tbody></table></div><p className="hint">Source {source.id} · SHA-256 {source.sha256}</p></details>
+        <details className="source-preview"><summary>Preview sumber · {Math.min(5,source.row_count)} baris pertama</summary><div className="table-wrap"><table><thead><tr>{source.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{source.preview.map((r,i)=><tr key={i}>{source.headers.map(h=><td key={h}>{r[h] || '—'}</td>)}</tr>)}</tbody></table></div><p className="hint">Source {source.id} · SHA-256 {source.sha256}</p>{source.storage_key && <div style={{marginTop:'12px',display:'flex',alignItems:'center',gap:'10px'}}><a href={apiUrl(base + '/sources/' + source.id + '/download')} download={source.filename} className="secondary" style={{display:'inline-flex',alignItems:'center',gap:'6px',textDecoration:'none',fontSize:'12px',padding:'6px 14px',borderRadius:'6px'}}>⬇ Unduh File Mentah ({source.filename})</a><span className="hint">Tersimpan aman di Object Storage</span></div>}</details>
         <label className="reporting-date">Tanggal laporan snapshot<input type="date" value={reportingDate} onChange={e=>setReportingDate(e.target.value)} required disabled={!!busy}/></label><div className="button-row"><button className="secondary" onClick={()=>void check()} disabled={!!busy}>Periksa kualitas</button><button onClick={()=>void publish()} disabled={!!busy || !quality || quality.errors.length>0}>Publikasikan snapshot →</button></div>
         {quality && <section className="quality"><h3>03 / Data quality · {quality.errors.length} error · {quality.warnings.length} peringatan</h3>{quality.errors.length===0 && <p>Validasi wajib lolos. Tinjau peringatan sebelum publikasi.</p>}{[...quality.errors,...quality.warnings].slice(0,100).map((q,i)=><p key={i} className={i<quality.errors.length?'quality-error':'muted'}>Baris {q.row} · {q.field}: {q.message}</p>)}{quality.errors.length+quality.warnings.length>100 && <p>Menampilkan 100 temuan pertama.</p>}</section>}</section>}
       </>}
